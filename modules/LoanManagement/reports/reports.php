@@ -61,12 +61,10 @@ $totalLiquidity = array_sum(array_column($accounts, 'balance'));
 $paymentsStmt = $pdo->prepare("
     SELECT p.*, 
            CONCAT(b.first_name, ' ', b.last_name) AS borrower_name,
-           a.account_name,
            l.reference_number
     FROM loan_payments p
     JOIN loans l ON p.loan_id = l.id
     JOIN loan_borrowers b ON l.borrower_id = b.id
-    JOIN loan_accounts a ON p.account_id = a.id
     WHERE p.business_id = ?
     ORDER BY p.payment_date DESC, p.created_at DESC
     LIMIT 15
@@ -92,7 +90,7 @@ $recentPayments = $paymentsStmt->fetchAll(PDO::FETCH_ASSOC);
 <body class="bg-body-tertiary" style="min-height: 100vh;">
 
 <div class="d-flex flex-column flex-lg-row" style="min-height: 100vh;">
-    <?php include __DIR__ . '/../../../../resources/partials/loansidebar.php'; ?>
+    <?php include __DIR__ . '/../../../resources/partials/loansidebar.php'; ?>
 
     <div class="p-2 p-md-4 flex-grow-1 bg-body-tertiary overflow-hidden">
         <!-- Header Section -->
@@ -213,7 +211,6 @@ $recentPayments = $paymentsStmt->fetchAll(PDO::FETCH_ASSOC);
                             <th class="py-3 ps-4">Date</th>
                             <th class="py-3">Borrower</th>
                             <th class="py-3">Ref #</th>
-                            <th class="py-3">Deposit Account</th>
                             <th class="py-3">Amount Paid</th>
                             <th class="py-3 pe-4">Notes</th>
                         </tr>
@@ -221,7 +218,7 @@ $recentPayments = $paymentsStmt->fetchAll(PDO::FETCH_ASSOC);
                     <tbody>
                         <?php if (empty($recentPayments)): ?>
                             <tr>
-                                <td colspan="6" class="text-center py-5 text-muted">
+                                <td colspan="5" class="text-center py-5 text-muted">
                                     <div class="mb-2"><i class="bi bi-receipt display-6 opacity-50"></i></div>
                                     <p class="mb-1 fw-semibold">No payment records found yet</p>
                                     <p class="small text-muted mb-0">Payments recorded against active loans will appear here.</p>
@@ -233,7 +230,6 @@ $recentPayments = $paymentsStmt->fetchAll(PDO::FETCH_ASSOC);
                                     <td class="ps-4 text-muted small"><?= date('M d, Y', strtotime($payment['payment_date'])) ?></td>
                                     <td class="fw-bold text-body"><?= htmlspecialchars($payment['borrower_name']) ?></td>
                                     <td><span class="badge bg-secondary bg-opacity-10 text-secondary" style="font-size: 0.7rem;"><?= htmlspecialchars($payment['reference_number'] ?? '—') ?></span></td>
-                                    <td class="text-muted small"><i class="bi bi-wallet2 me-1"></i><?= htmlspecialchars($payment['account_name']) ?></td>
                                     <td class="fw-bold text-success">₱<?= number_format($payment['payment_amount'], 2) ?></td>
                                     <td class="pe-4 text-muted small text-truncate" style="max-width: 200px;"><?= htmlspecialchars($payment['notes'] ?: '—') ?></td>
                                 </tr>
