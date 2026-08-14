@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Aug 14, 2026 at 12:03 AM
+-- Generation Time: Aug 14, 2026 at 11:57 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -67,8 +67,18 @@ CREATE TABLE `business_users` (
   `id` int(11) NOT NULL,
   `business_id` int(11) NOT NULL,
   `user_id` int(11) NOT NULL,
-  `role` varchar(50) DEFAULT 'cashier'
+  `role` varchar(50) DEFAULT 'cashier',
+  `status` enum('active','inactive') NOT NULL DEFAULT 'active'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `business_users`
+--
+
+INSERT INTO `business_users` (`id`, `business_id`, `user_id`, `role`, `status`) VALUES
+(1, 1, 5, 'business_owner', 'active'),
+(3, 1, 4, 'business_owner', 'active'),
+(4, 1, 3, 'staff', 'active');
 
 -- --------------------------------------------------------
 
@@ -79,6 +89,7 @@ CREATE TABLE `business_users` (
 CREATE TABLE `loans` (
   `id` int(11) NOT NULL,
   `business_id` int(11) NOT NULL,
+  `created_by` int(11) DEFAULT NULL,
   `account_id` int(11) NOT NULL,
   `reference_number` varchar(100) DEFAULT NULL,
   `borrower_id` int(11) NOT NULL,
@@ -89,6 +100,10 @@ CREATE TABLE `loans` (
   `due_date` date NOT NULL,
   `term_days` int(11) NOT NULL,
   `term_unit` enum('days','months') NOT NULL DEFAULT 'days',
+  `payment_type` enum('single','installment') NOT NULL DEFAULT 'installment',
+  `payment_frequency` enum('daily','weekly','biweekly','monthly','custom') DEFAULT NULL,
+  `number_of_payments` int(11) NOT NULL DEFAULT 1,
+  `fixed_payment_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
   `status` enum('pending','active','completed','defaulted') DEFAULT 'pending',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -97,12 +112,8 @@ CREATE TABLE `loans` (
 -- Dumping data for table `loans`
 --
 
-INSERT INTO `loans` (`id`, `business_id`, `account_id`, `reference_number`, `borrower_id`, `principal_amount`, `interest_rate`, `total_payable`, `loan_date`, `due_date`, `term_days`, `term_unit`, `status`, `created_at`) VALUES
-(1, 1, 2, NULL, 1, 100.00, 15.00, 115.00, '2026-08-14', '2026-09-13', 15, 'days', 'active', '2026-08-13 16:18:57'),
-(2, 1, 1, NULL, 1, 500.00, 15.00, 575.00, '2026-08-13', '2026-08-28', 15, 'days', 'active', '2026-08-13 16:44:57'),
-(3, 1, 1, '000010', 1, 100.00, 0.00, 100.00, '2026-08-13', '2026-08-28', 15, 'days', 'active', '2026-08-13 17:13:38'),
-(4, 1, 1, 'Test', 1, 100.00, 0.00, 100.00, '2026-08-13', '2026-08-18', 5, 'days', 'completed', '2026-08-13 17:49:36'),
-(5, 1, 1, '1', 1, 100.00, 0.00, 100.00, '2026-08-01', '2026-08-31', 30, 'days', 'completed', '2026-08-13 17:50:06');
+INSERT INTO `loans` (`id`, `business_id`, `created_by`, `account_id`, `reference_number`, `borrower_id`, `principal_amount`, `interest_rate`, `total_payable`, `loan_date`, `due_date`, `term_days`, `term_unit`, `payment_type`, `payment_frequency`, `number_of_payments`, `fixed_payment_amount`, `status`, `created_at`) VALUES
+(7, 1, 2, 3, NULL, 3, 100.00, 0.00, 100.00, '2026-08-14', '2026-12-14', 4, 'months', 'installment', 'monthly', 1, 25.00, 'active', '2026-08-14 21:36:04');
 
 -- --------------------------------------------------------
 
@@ -113,6 +124,8 @@ INSERT INTO `loans` (`id`, `business_id`, `account_id`, `reference_number`, `bor
 CREATE TABLE `loan_accounts` (
   `id` int(11) NOT NULL,
   `business_id` int(11) NOT NULL,
+  `created_by` int(11) DEFAULT NULL,
+  `user_id` int(11) DEFAULT NULL,
   `account_name` varchar(100) NOT NULL,
   `balance` decimal(12,2) NOT NULL DEFAULT 0.00,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
@@ -122,9 +135,8 @@ CREATE TABLE `loan_accounts` (
 -- Dumping data for table `loan_accounts`
 --
 
-INSERT INTO `loan_accounts` (`id`, `business_id`, `account_name`, `balance`, `created_at`) VALUES
-(1, 1, 'Gcash', 400.00, '2026-08-13 15:47:40'),
-(2, 1, 'Maribank', 900.00, '2026-08-13 15:47:58');
+INSERT INTO `loan_accounts` (`id`, `business_id`, `created_by`, `user_id`, `account_name`, `balance`, `created_at`) VALUES
+(3, 1, 2, NULL, 'Gcash', 950.00, '2026-08-14 21:35:54');
 
 -- --------------------------------------------------------
 
@@ -147,13 +159,9 @@ CREATE TABLE `loan_account_transactions` (
 --
 
 INSERT INTO `loan_account_transactions` (`id`, `business_id`, `account_id`, `type`, `amount`, `description`, `created_at`) VALUES
-(1, 1, 2, 'DEBIT', 100.00, 'Loan disbursement to borrower (Loan #1)', '2026-08-13 16:18:57'),
-(2, 1, 1, 'DEBIT', 500.00, 'Loan #2 disbursement', '2026-08-13 16:44:57'),
-(3, 1, 1, 'DEBIT', 100.00, 'Loan #3 disbursement', '2026-08-13 17:13:38'),
-(4, 1, 1, 'DEBIT', 100.00, 'Loan #4 disbursement', '2026-08-13 17:49:36'),
-(5, 1, 1, 'DEBIT', 100.00, 'Loan #5 disbursement', '2026-08-13 17:50:06'),
-(6, 1, 1, 'CREDIT', 100.00, 'Payment received for Loan #5', '2026-08-13 18:27:20'),
-(7, 1, 1, 'CREDIT', 100.00, 'Payment received for Loan #4', '2026-08-13 19:17:08');
+(13, 1, 3, 'DEBIT', 100.00, 'Loan #7 disbursement', '2026-08-14 21:36:04'),
+(14, 1, 3, 'CREDIT', 25.00, 'Payment received for Loan #7', '2026-08-14 21:36:10'),
+(15, 1, 3, 'CREDIT', 25.00, 'Payment received for Loan #7', '2026-08-14 21:38:52');
 
 -- --------------------------------------------------------
 
@@ -164,6 +172,7 @@ INSERT INTO `loan_account_transactions` (`id`, `business_id`, `account_id`, `typ
 CREATE TABLE `loan_borrowers` (
   `id` int(11) NOT NULL,
   `business_id` int(11) NOT NULL,
+  `created_by` int(11) DEFAULT NULL,
   `first_name` varchar(100) NOT NULL,
   `last_name` varchar(100) NOT NULL,
   `contact_no` varchar(50) NOT NULL,
@@ -175,8 +184,8 @@ CREATE TABLE `loan_borrowers` (
 -- Dumping data for table `loan_borrowers`
 --
 
-INSERT INTO `loan_borrowers` (`id`, `business_id`, `first_name`, `last_name`, `contact_no`, `address`, `created_at`) VALUES
-(1, 1, 'Marldohn', 'Rubinos', '09061941138', 'Jakosalem Street', '2026-08-13 15:07:20');
+INSERT INTO `loan_borrowers` (`id`, `business_id`, `created_by`, `first_name`, `last_name`, `contact_no`, `address`, `created_at`) VALUES
+(3, 1, 2, 'Marldohn', 'Rubinos', '09061941138', 'Jakosalem', '2026-08-14 21:35:45');
 
 -- --------------------------------------------------------
 
@@ -194,15 +203,6 @@ CREATE TABLE `loan_collaterals` (
   `image_path` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
---
--- Dumping data for table `loan_collaterals`
---
-
-INSERT INTO `loan_collaterals` (`id`, `business_id`, `loan_id`, `item_name`, `description`, `estimated_value`, `image_path`, `created_at`) VALUES
-(1, 1, 2, 'Jwwelry', 'ASD', 2000.00, 'uploads/collaterals/col_2_1786639497.jpg', '2026-08-13 16:44:57'),
-(2, 1, 3, 'Logo', '', 0.00, 'uploads/collaterals/col_3_1786641218.png', '2026-08-13 17:13:38'),
-(3, 1, 4, 'qwd', '', 0.00, 'uploads/collaterals/col_4_1786643376.png', '2026-08-13 17:49:36');
 
 -- --------------------------------------------------------
 
@@ -227,7 +227,9 @@ CREATE TABLE `loan_collections` (
 CREATE TABLE `loan_payments` (
   `id` int(11) NOT NULL,
   `business_id` int(11) NOT NULL,
+  `created_by` int(11) DEFAULT NULL,
   `loan_id` int(11) NOT NULL,
+  `schedule_id` int(11) DEFAULT NULL,
   `payment_amount` decimal(10,2) NOT NULL,
   `payment_date` date NOT NULL,
   `notes` text DEFAULT NULL,
@@ -238,9 +240,9 @@ CREATE TABLE `loan_payments` (
 -- Dumping data for table `loan_payments`
 --
 
-INSERT INTO `loan_payments` (`id`, `business_id`, `loan_id`, `payment_amount`, `payment_date`, `notes`, `created_at`) VALUES
-(1, 1, 5, 100.00, '2026-08-13', '', '2026-08-13 18:27:20'),
-(2, 1, 4, 100.00, '2026-08-13', '', '2026-08-13 19:17:08');
+INSERT INTO `loan_payments` (`id`, `business_id`, `created_by`, `loan_id`, `schedule_id`, `payment_amount`, `payment_date`, `notes`, `created_at`) VALUES
+(7, 1, 2, 7, NULL, 25.00, '2026-08-14', '', '2026-08-14 21:36:10'),
+(8, 1, 2, 7, NULL, 25.00, '2026-08-14', '', '2026-08-14 21:38:52');
 
 -- --------------------------------------------------------
 
@@ -255,6 +257,16 @@ CREATE TABLE `loan_schedules` (
   `amount_due` decimal(10,2) NOT NULL,
   `status` enum('unpaid','partially_paid','paid') DEFAULT 'unpaid'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `loan_schedules`
+--
+
+INSERT INTO `loan_schedules` (`id`, `loan_id`, `due_date`, `amount_due`, `status`) VALUES
+(5, 7, '2026-09-14', 25.00, 'paid'),
+(6, 7, '2026-10-14', 25.00, 'paid'),
+(7, 7, '2026-11-14', 25.00, 'unpaid'),
+(8, 7, '2026-12-14', 25.00, 'unpaid');
 
 -- --------------------------------------------------------
 
@@ -350,6 +362,28 @@ CREATE TABLE `subscriptions` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `subscription_payments`
+--
+
+CREATE TABLE `subscription_payments` (
+  `id` int(11) NOT NULL,
+  `business_id` int(11) NOT NULL,
+  `subscription_id` int(11) NOT NULL,
+  `plan_id` int(11) NOT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `payment_date` datetime NOT NULL,
+  `period_start` datetime DEFAULT NULL,
+  `period_end` datetime DEFAULT NULL,
+  `payment_method` varchar(50) DEFAULT NULL,
+  `reference_number` varchar(100) DEFAULT NULL,
+  `status` enum('pending','paid','failed','refunded') DEFAULT 'paid',
+  `notes` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `users`
 --
 
@@ -359,6 +393,7 @@ CREATE TABLE `users` (
   `email` varchar(150) NOT NULL,
   `password` varchar(255) NOT NULL,
   `role` enum('super_admin','business_owner','staff') DEFAULT 'business_owner',
+  `is_approved` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `plan_id` int(11) DEFAULT 1,
@@ -370,9 +405,12 @@ CREATE TABLE `users` (
 -- Dumping data for table `users`
 --
 
-INSERT INTO `users` (`id`, `name`, `email`, `password`, `role`, `created_at`, `updated_at`, `plan_id`, `subscription_status`, `subscription_ends_at`) VALUES
-(1, 'Admin User', 'mrubinos@gmail.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', '', '2026-08-12 18:57:13', '2026-08-12 18:57:40', 1, 'active', NULL),
-(2, 'Admin User', 'admin@gmail.com', '$2y$10$hx2e6YkbD8CZzEHvRu6g7.7tdWPSa7U.IGDfmdcAJ9zZPDbCZyRy.', 'business_owner', '2026-08-12 19:19:20', '2026-08-13 12:50:31', 1, 'active', NULL);
+INSERT INTO `users` (`id`, `name`, `email`, `password`, `role`, `is_approved`, `created_at`, `updated_at`, `plan_id`, `subscription_status`, `subscription_ends_at`) VALUES
+(1, 'Admin User', 'mrubinos@gmail.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'business_owner', 0, '2026-08-12 18:57:13', '2026-08-14 18:21:51', 1, 'active', NULL),
+(2, 'Admin User', 'admin@gmail.com', '$2y$10$KMw9ifujJT.cmU397ix/s.iqG0Gk9tJ1lhHt4RdsKWj2taPnTYlDi', 'super_admin', 1, '2026-08-12 19:19:20', '2026-08-14 18:16:20', 1, 'active', NULL),
+(3, 'admin admin', 'admin2@gmail.com', '$2y$10$fkot.Epwmslgq5PcWuNWhOJ7yniXtSkTP81SS7kILcwnLk/WutUUi', '', 1, '2026-08-14 18:05:47', '2026-08-14 18:17:27', 1, 'active', NULL),
+(4, 'admin admin', 'admin3@gmail.com', '$2y$10$UParFLWOPnqSfmnFspKKSuWMqrFAHwmp1.UiZF8Rlbw4f.rIF0e.C', 'business_owner', 1, '2026-08-14 18:11:35', '2026-08-14 18:55:23', 1, 'active', NULL),
+(5, 'admin admin', 'admin4@gmail.com', '$2y$10$rEv7rJSB5UiHt.4oylFQRuwK0JOJm6cmww6ES0y0aruwaYwspEkma', 'business_owner', 1, '2026-08-14 18:15:38', '2026-08-14 18:54:38', 1, 'active', NULL);
 
 --
 -- Indexes for dumped tables
@@ -398,7 +436,7 @@ ALTER TABLE `business_modules`
 --
 ALTER TABLE `business_users`
   ADD PRIMARY KEY (`id`),
-  ADD KEY `business_id` (`business_id`),
+  ADD UNIQUE KEY `unique_business_user` (`business_id`,`user_id`),
   ADD KEY `user_id` (`user_id`);
 
 --
@@ -407,13 +445,15 @@ ALTER TABLE `business_users`
 ALTER TABLE `loans`
   ADD PRIMARY KEY (`id`),
   ADD KEY `business_id` (`business_id`),
-  ADD KEY `borrower_id` (`borrower_id`);
+  ADD KEY `borrower_id` (`borrower_id`),
+  ADD KEY `idx_loans_created_by` (`created_by`);
 
 --
 -- Indexes for table `loan_accounts`
 --
 ALTER TABLE `loan_accounts`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_loan_accounts_created_by` (`created_by`);
 
 --
 -- Indexes for table `loan_account_transactions`
@@ -504,6 +544,15 @@ ALTER TABLE `subscriptions`
   ADD KEY `plan_id` (`plan_id`);
 
 --
+-- Indexes for table `subscription_payments`
+--
+ALTER TABLE `subscription_payments`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `business_id` (`business_id`),
+  ADD KEY `subscription_id` (`subscription_id`),
+  ADD KEY `plan_id` (`plan_id`);
+
+--
 -- Indexes for table `users`
 --
 ALTER TABLE `users`
@@ -530,31 +579,31 @@ ALTER TABLE `business_modules`
 -- AUTO_INCREMENT for table `business_users`
 --
 ALTER TABLE `business_users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `loans`
 --
 ALTER TABLE `loans`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `loan_accounts`
 --
 ALTER TABLE `loan_accounts`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `loan_account_transactions`
 --
 ALTER TABLE `loan_account_transactions`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
 
 --
 -- AUTO_INCREMENT for table `loan_borrowers`
 --
 ALTER TABLE `loan_borrowers`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `loan_collaterals`
@@ -572,13 +621,13 @@ ALTER TABLE `loan_collections`
 -- AUTO_INCREMENT for table `loan_payments`
 --
 ALTER TABLE `loan_payments`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT for table `loan_schedules`
 --
 ALTER TABLE `loan_schedules`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT for table `plans`
@@ -617,10 +666,16 @@ ALTER TABLE `subscriptions`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `subscription_payments`
+--
+ALTER TABLE `subscription_payments`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- Constraints for dumped tables
