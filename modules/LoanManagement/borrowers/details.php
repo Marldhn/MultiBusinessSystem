@@ -33,6 +33,23 @@ if (!$borrower) {
     exit;
 }
 
+// Fetch borrower's loans (Active & Past) along with total payments collected per loan
+$loansStmt = $pdo->prepare("
+    SELECT l.*, 
+           COALESCE(p_totals.total_paid, 0) AS total_paid
+    FROM loans l
+    LEFT JOIN (
+        SELECT loan_id, SUM(payment_amount) AS total_paid 
+        FROM loan_payments 
+        WHERE business_id = ? 
+        GROUP BY loan_id
+    ) p_totals ON l.id = p_totals.loan_id
+    WHERE l.borrower_id = ? AND l.business_id = ?
+    ORDER BY l.created_at DESC
+");
+$loansStmt->execute([$businessId, $borrowerId, $businessId]);
+$loans = $loansStmt->fetchAll(PDO::FETCH_ASSOC);
+
 $activePage = 'borrowers';
 $pageTitle = htmlspecialchars($borrower['first_name'] . ' ' . $borrower['last_name']) . " - Borrower Details";
 ?>
@@ -100,8 +117,62 @@ $pageTitle = htmlspecialchars($borrower['first_name'] . ' ' . $borrower['last_na
             <!-- Loan History Section -->
             <div class="col-lg-8">
                 <div class="card border-0 shadow-sm rounded-4 p-4">
-                    <h5 class="fw-bold mb-3 fs-6">Active & Past Loans</h5>
-                    <p class="text-muted small">No loans issued to this borrower yet.</p>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0 fs-6">Active & Past Loans</h5>
+                        <a href="index.php?page=create_loan&borrower_id=<?= $borrower['id'] ?>" class="btn btn-sm btn-outline-primary fw-semibold">
+                            <i class="bi bi-plus-lg me-1"></i> Issue New Loan
+                        </a>
+                    </div>
+
+                    <?php if (empty($loans)): ?>
+                        <div class="text-center py-5 text-muted">
+                            <div class="mb-2"><i class="bi bi-file-earmark-text display-6 opacity-50"></i></div>
+                            <p class="mb-1 fw-semibold">No loans issued to this borrower yet.</p>
+                            <p class="small text-muted mb-0">Create a new loan using the button above.</p>
+                        </div>
+                    <?php else: ?>
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0" style="font-size: 0.85rem;">
+                                <thead class="table-light text-uppercase text-muted" style="font-size: 0.7rem;">
+                                    <tr>
+                                        <th class="py-2 ps-3">Ref #</th>
+                                        <th class="py-2">Principal</th>
+                                        <th class="py-2">Total Payable</th>
+                                        <th class="py-2">Paid</th>
+                                        <th class="py-2">Status</th>
+                                        <th class="py-2 text-end pe-3">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($loans as $loan): ?>
+                                        <tr>
+                                            <td class="ps-3 fw-bold text-body">
+                                                <?= htmlspecialchars($loan['reference_number'] ?? 'L-' . $loan['id']) ?>
+                                                <div class="text-muted fw-normal" style="font-size: 0.7rem;"><?= date('M d, Y', strtotime($loan['loan_date'] ?? $loan['created_at'])) ?></div>
+                                            </td>
+                                            <td>₱<?= number_format($loan['principal_amount'], 2) ?></td>
+                                            <td class="fw-semibold">₱<?= number_format($loan['total_payable'], 2) ?></td>
+                                            <td class="text-success fw-bold">₱<?= number_format($loan['total_paid'], 2) ?></td>
+                                            <td>
+                                                <?php 
+                                                    $status = strtolower($loan['status'] ?? 'active');
+                                                    $badgeBg = 'bg-warning bg-opacity-10 text-warning';
+                                                    if ($status === 'completed' || $status === 'paid') $badgeBg = 'bg-success bg-opacity-10 text-success';
+                                                    if ($status === 'defaulted') $badgeBg = 'bg-danger bg-opacity-10 text-danger';
+                                                ?>
+                                                <span class="badge <?= $badgeBg ?> text-capitalize" style="font-size: 0.7rem;"><?= htmlspecialchars($loan['status'] ?? 'Active') ?></span>
+                                            </td>
+                                            <td class="text-end pe-3">
+                                                <a href="index.php?page=loan_details&id=<?= $loan['id'] ?>" class="btn btn-sm btn-light border fw-semibold px-2 py-1" style="font-size: 0.75rem;">
+                                                    View <i class="bi bi-chevron-right ms-1"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
