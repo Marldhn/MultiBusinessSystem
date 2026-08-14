@@ -1,46 +1,17 @@
 <?php
 // =========================================================
-// SELECT BUSINESS
-// =========================================================
-// Note:
-// Database connection and session are already loaded
-// through index.php -> app.php
+// SELECT BUSINESS PAGE
 // =========================================================
 
 $pdo = Database::getConnection();
 
 $userId = $_SESSION['user_id'] ?? null;
-
-
-// =========================================================
-// SECURITY CHECK
-// =========================================================
+$userRole = $_SESSION['role'] ?? 'staff';
 
 if (!$userId) {
     header('Location: index.php?page=login');
     exit;
 }
-
-
-// =========================================================
-// FETCH BUSINESSES BELONGING TO LOGGED-IN USER
-// =========================================================
-
-$stmt = $pdo->prepare("
-    SELECT *
-    FROM businesses
-    WHERE owner_id = ?
-    ORDER BY business_name ASC
-");
-
-$stmt->execute([$userId]);
-
-$businesses = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-
-// =========================================================
-// VARIABLES
-// =========================================================
 
 $error = '';
 
@@ -49,742 +20,553 @@ $error = '';
 // HANDLE BUSINESS SELECTION
 // =========================================================
 
-if (
-    $_SERVER['REQUEST_METHOD'] === 'POST' &&
-    isset($_POST['business_id'])
-) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['business_id'])) {
 
-    $selectedBusinessId =
-        intval($_POST['business_id']);
-
+    $selectedBusinessId = (int)$_POST['business_id'];
 
     if ($selectedBusinessId <= 0) {
-
-        $error =
-            "Please select a valid business.";
-
+        $error = 'Invalid business selected.';
     } else {
 
-        /*
-         * Important:
-         * We do NOT trust the business_id sent
-         * by the browser.
-         *
-         * We check again that the business
-         * belongs to the logged-in user.
-         */
+        $hasAccess = false;
+        $businessRole = 'owner';
 
-        $businessStmt = $pdo->prepare("
-            SELECT
-                id,
-                business_name,
-                status
-            FROM businesses
-            WHERE id = ?
-            AND owner_id = ?
-            LIMIT 1
-        ");
+        // -----------------------------------------------------
+        // SUPER ADMIN
+        // -----------------------------------------------------
 
-        $businessStmt->execute([
-            $selectedBusinessId,
-            $userId
-        ]);
+        if ($userRole === 'super_admin') {
 
-        $selectedBusiness =
-            $businessStmt->fetch(PDO::FETCH_ASSOC);
-
-
-        if (!$selectedBusiness) {
-
-            $error =
-                "The selected business does not exist or you do not have access to it.";
+            $hasAccess = true;
+            $businessRole = 'super_admin';
 
         } else {
 
-            /*
-             * Check business status.
-             *
-             * If your database uses another status
-             * system, you can modify this section.
-             */
+            // -------------------------------------------------
+            // CHECK USER BUSINESS ASSIGNMENT
+            // -------------------------------------------------
 
-            $businessStatus =
-                strtolower(
-                    trim(
-                        $selectedBusiness['status'] ?? 'active'
-                    )
-                );
+            $checkStmt = $pdo->prepare("
+                SELECT role
+                FROM business_users
+                WHERE business_id = ?
+                AND user_id = ?
+                LIMIT 1
+            ");
+
+            $checkStmt->execute([
+                $selectedBusinessId,
+                $userId
+            ]);
+
+            $assignment = $checkStmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($assignment) {
+
+                $hasAccess = true;
+                $businessRole = $assignment['role'];
+
+            }
+        }
 
 
-            if (
-                $businessStatus !== 'active' &&
-                $businessStatus !== ''
-            ) {
+        // -----------------------------------------------------
+        // VERIFY BUSINESS
+        // -----------------------------------------------------
 
-                $error =
-                    "This business is currently not active.";
+        if ($hasAccess) {
+
+            $bStmt = $pdo->prepare("
+                SELECT *
+                FROM businesses
+                WHERE id = ?
+                AND status = 'active'
+                LIMIT 1
+            ");
+
+            $bStmt->execute([
+                $selectedBusinessId
+            ]);
+
+            $businessData = $bStmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($businessData) {
+
+                $_SESSION['business_id'] = $businessData['id'];
+                $_SESSION['business_name'] = $businessData['business_name'];
+                $_SESSION['business_role'] = $businessRole;
+
+                header('Location: index.php?page=dashboard');
+                exit;
 
             } else {
 
-                /*
-                 * Store selected business
-                 * in the session.
-                 */
-
-                $_SESSION['business_id'] =
-                    $selectedBusiness['id'];
-
-                $_SESSION['business_name'] =
-                    $selectedBusiness['business_name'];
-
-
-                /*
-                 * Optional useful session value.
-                 */
-
-                $_SESSION['business_status'] =
-                    $selectedBusiness['status'] ?? 'active';
-
-
-                /*
-                 * Regenerate session ID after
-                 * changing the active business.
-                 *
-                 * This is a good security practice.
-                 */
-
-                session_regenerate_id(true);
-
-
-                /*
-                 * Go to dashboard.
-                 */
-
-                header(
-                    'Location: index.php?page=dashboard'
-                );
-
-                exit;
+                $error = 'Selected business is inactive or does not exist.';
             }
+
+        } else {
+
+            $error = 'You do not have permission to access this business.';
         }
     }
 }
 
 
 // =========================================================
-// PAGE TITLE
+// FETCH BUSINESSES
 // =========================================================
 
-$pageTitle =
-    "Select Business - MULTIBUSINESSSYSTEM";
+if ($userRole === 'super_admin') {
+
+    // Super Admin sees all active businesses
+
+    $stmt = $pdo->prepare("
+        SELECT
+            b.id,
+            b.business_name,
+            b.slug,
+            b.status,
+            b.created_at,
+            'super_admin' AS user_business_role
+        FROM businesses b
+        WHERE b.status = 'active'
+        ORDER BY b.business_name ASC
+    ");
+
+    $stmt->execute();
+
+} else {
+
+    // ---------------------------------------------------------
+    // NORMAL USERS
+    // ONLY SEE BUSINESSES ASSIGNED TO THEM
+    // ---------------------------------------------------------
+
+    $stmt = $pdo->prepare("
+        SELECT
+            b.id,
+            b.business_name,
+            b.slug,
+            b.status,
+            b.created_at,
+            bu.role AS user_business_role
+        FROM businesses b
+        INNER JOIN business_users bu
+            ON bu.business_id = b.id
+        WHERE bu.user_id = ?
+        AND b.status = 'active'
+        ORDER BY b.business_name ASC
+    ");
+
+    $stmt->execute([
+        $userId
+    ]);
+}
+
+$businesses = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 
 // =========================================================
-// SHARED HEADER
+// FETCH MODULES FOR EACH BUSINESS
 // =========================================================
+
+$businessModules = [];
+
+if (!empty($businesses)) {
+
+    $businessIds = array_column($businesses, 'id');
+
+    $placeholders = implode(
+        ',',
+        array_fill(0, count($businessIds), '?')
+    );
+
+    $moduleStmt = $pdo->prepare("
+        SELECT
+            business_id,
+            module_name,
+            is_active
+        FROM business_modules
+        WHERE business_id IN ($placeholders)
+        AND is_active = 1
+        ORDER BY module_name ASC
+    ");
+
+    $moduleStmt->execute($businessIds);
+
+    foreach ($moduleStmt->fetchAll(PDO::FETCH_ASSOC) as $module) {
+
+        $businessId = (int)$module['business_id'];
+
+        $businessModules[$businessId][] =
+            $module['module_name'];
+    }
+}
+
+
+$pageTitle = "Select Business - Multibusiness System";
 
 include __DIR__ . '/partials/header.php';
-
 ?>
 
-<style>
+<div class="container py-5">
 
-/* =========================================================
-   SELECT BUSINESS PAGE
-   ========================================================= */
+    <div class="row justify-content-center">
 
-.select-business-page {
-    min-height: calc(100vh - 100px);
+        <div class="col-md-9 col-lg-8">
 
-    padding-top: 30px;
-    padding-bottom: 50px;
-}
 
+            <!-- =================================================
+                 HEADER
+                 ================================================= -->
 
-/* =========================================================
-   HEADER
-   ========================================================= */
+            <div class="d-flex justify-content-between align-items-center mb-4">
 
-.business-page-header {
-    text-align: center;
+                <div>
 
-    margin-bottom: 35px;
-}
+                    <h2 class="fw-bold mb-1">
+                        Select a Business
+                    </h2>
 
-.business-page-header h2 {
-    font-size: 1.8rem;
-    font-weight: 800;
-
-    margin-bottom: 8px;
-}
-
-.business-page-header p {
-    max-width: 600px;
-
-    margin-left: auto;
-    margin-right: auto;
-
-    font-size: .9rem;
-}
-
-
-/* =========================================================
-   BUSINESS CARD
-   ========================================================= */
-
-.business-card {
-    height: 100%;
-
-    border: 1px solid var(--bs-border-color) !important;
-
-    border-radius: 18px !important;
-
-    background: var(--bs-body-bg);
-
-    transition:
-        transform .18s ease,
-        box-shadow .18s ease,
-        border-color .18s ease;
-}
-
-.business-card:hover {
-    transform: translateY(-3px);
-
-    box-shadow:
-        0 10px 30px rgba(0,0,0,.08) !important;
-
-    border-color:
-        rgba(var(--bs-primary-rgb), .35) !important;
-}
-
-
-/* =========================================================
-   BUSINESS ICON
-   ========================================================= */
-
-.business-icon {
-    width: 52px;
-    height: 52px;
-
-    border-radius: 14px;
-
-    display: flex;
-
-    align-items: center;
-    justify-content: center;
-
-    background:
-        rgba(var(--bs-primary-rgb), .10);
-
-    color:
-        var(--bs-primary);
-
-    font-size: 23px;
-
-    margin-bottom: 18px;
-}
-
-
-/* =========================================================
-   BUSINESS NAME
-   ========================================================= */
-
-.business-name {
-    font-size: 1.15rem;
-
-    font-weight: 750;
-
-    color: var(--bs-body-color);
-
-    word-break: break-word;
-
-    line-height: 1.3;
-}
-
-
-/* =========================================================
-   BUSINESS STATUS
-   ========================================================= */
-
-.business-status {
-    font-size: .78rem;
-
-    color: var(--bs-secondary-color);
-}
-
-
-/* =========================================================
-   BUTTON
-   ========================================================= */
-
-.manage-business-btn {
-    min-height: 44px;
-
-    border-radius: 10px !important;
-
-    font-size: .85rem;
-
-    transition:
-        transform .15s ease,
-        box-shadow .15s ease;
-}
-
-.manage-business-btn:hover {
-    transform: translateY(-1px);
-
-    box-shadow:
-        0 5px 15px
-        rgba(var(--bs-primary-rgb), .20);
-}
-
-
-/* =========================================================
-   EMPTY STATE
-   ========================================================= */
-
-.business-empty {
-    max-width: 600px;
-
-    margin: 0 auto;
-
-    border-radius: 18px;
-
-    padding: 45px 25px;
-
-    border:
-        1px solid var(--bs-border-color);
-
-    background:
-        var(--bs-body-bg);
-}
-
-.business-empty-icon {
-    width: 65px;
-    height: 65px;
-
-    margin: 0 auto 18px;
-
-    border-radius: 18px;
-
-    display: flex;
-
-    align-items: center;
-    justify-content: center;
-
-    background:
-        rgba(var(--bs-warning-rgb), .10);
-
-    color:
-        var(--bs-warning);
-
-    font-size: 28px;
-}
-
-
-/* =========================================================
-   MOBILE
-   ========================================================= */
-
-@media (max-width: 575.98px) {
-
-    .select-business-page {
-        padding-top: 20px;
-
-        padding-left: 12px;
-        padding-right: 12px;
-    }
-
-    .business-page-header {
-        margin-bottom: 25px;
-    }
-
-    .business-page-header h2 {
-        font-size: 1.45rem;
-    }
-
-    .business-page-header p {
-        font-size: .8rem;
-    }
-
-    .business-card {
-        border-radius: 15px !important;
-    }
-
-    .business-name {
-        font-size: 1rem;
-    }
-
-}
-
-</style>
-
-
-<!-- =========================================================
-     MAIN CONTENT
-     ========================================================= -->
-
-<div class="container-fluid select-business-page">
-
-    <div class="container">
-
-
-        <!-- =====================================================
-             PAGE HEADER
-             ===================================================== -->
-
-        <div class="business-page-header">
-
-            <h2 class="text-body">
-
-                Select a Business
-
-            </h2>
-
-
-            <p class="text-muted mb-0">
-
-                Choose a business below to access its
-                dashboard and manage operations.
-
-            </p>
-
-        </div>
-
-
-        <!-- =====================================================
-             ERROR
-             ===================================================== -->
-
-        <?php if (!empty($error)): ?>
-
-            <div
-                class="alert alert-danger
-                       alert-dismissible fade show
-                       rounded-4 shadow-sm
-                       small mb-4"
-                role="alert"
-            >
-
-                <i
-                    class="bi bi-exclamation-triangle-fill me-2"
-                ></i>
-
-                <?= htmlspecialchars($error) ?>
-
-
-                <button
-                    type="button"
-                    class="btn-close"
-                    data-bs-dismiss="alert"
-                    aria-label="Close"
-                ></button>
-
-            </div>
-
-        <?php endif; ?>
-
-
-        <!-- =====================================================
-             BUSINESSES
-             ===================================================== -->
-
-        <?php if (empty($businesses)): ?>
-
-
-            <!-- EMPTY STATE -->
-
-            <div
-                class="business-empty
-                       text-center
-                       shadow-sm"
-            >
-
-                <div class="business-empty-icon">
-
-                    <i
-                        class="bi bi-building-x"
-                    ></i>
+                    <p class="text-muted small mb-0">
+                        Choose the business workspace you want to access.
+                    </p>
 
                 </div>
 
 
-                <h5
-                    class="fw-bold text-body mb-2"
-                >
+                <?php if ($userRole === 'super_admin'): ?>
 
-                    No Businesses Found
+                    <a href="index.php?page=admin_portal"
+                       class="btn btn-outline-primary btn-sm fw-bold">
 
-                </h5>
+                        <i class="bi bi-shield-lock me-1"></i>
+                        Admin Portal
 
+                    </a>
 
-                <p
-                    class="text-muted small mb-4"
-                >
+                <?php endif; ?>
 
-                    You do not have any businesses
-                    registered under your account yet.
-
-                </p>
+            </div>
 
 
-                <a
-                    href="index.php?page=dashboard"
-                    class="btn btn-primary
-                           fw-semibold
-                           rounded-3
-                           px-4"
-                >
+            <!-- =================================================
+                 ERROR
+                 ================================================= -->
 
-                    <i
-                        class="bi bi-arrow-left me-1"
-                    ></i>
+            <?php if (!empty($error)): ?>
 
-                    Back to Dashboard
+                <div class="alert alert-danger rounded-4 shadow-sm mb-4">
+
+                    <i class="bi bi-exclamation-circle-fill me-2"></i>
+
+                    <?= htmlspecialchars($error) ?>
+
+                </div>
+
+            <?php endif; ?>
+
+
+            <!-- =================================================
+                 NO BUSINESSES
+                 ================================================= -->
+
+            <?php if (empty($businesses)): ?>
+
+                <div class="card p-5 text-center shadow-sm rounded-4 border-0 bg-white">
+
+                    <div class="text-muted mb-3"
+                         style="font-size: 3rem;">
+
+                        <i class="bi bi-buildings"></i>
+
+                    </div>
+
+                    <h5 class="fw-bold text-dark">
+                        No Businesses Available
+                    </h5>
+
+                    <p class="text-muted small mb-0">
+
+                        You are not currently assigned to any active
+                        businesses. Please contact an administrator.
+
+                    </p>
+
+                </div>
+
+
+            <?php else: ?>
+
+
+                <!-- =================================================
+                     BUSINESS CARDS
+                     ================================================= -->
+
+                <div class="row g-3">
+
+                    <?php foreach ($businesses as $biz): ?>
+
+                        <?php
+
+                        $businessId = (int)$biz['id'];
+
+                        $modules =
+                            $businessModules[$businessId] ?? [];
+
+                        ?>
+
+                        <div class="col-md-6">
+
+                            <div class="card h-100 shadow-sm rounded-4 border-0 transition-card">
+
+                                <div class="card-body p-4 d-flex flex-column">
+
+
+                                    <!-- =================================
+                                         BUSINESS HEADER
+                                         ================================= -->
+
+                                    <div>
+
+                                        <div class="d-flex align-items-center justify-content-between mb-3">
+
+                                            <div class="rounded-3 bg-primary bg-opacity-10 text-primary p-3">
+
+                                                <i class="bi bi-shop"
+                                                   style="font-size: 1.5rem;">
+                                                </i>
+
+                                            </div>
+
+
+                                            <!-- USER ROLE -->
+
+                                            <?php if (!empty($biz['user_business_role'])): ?>
+
+                                                <span class="badge bg-secondary text-uppercase px-2 py-1"
+                                                      style="font-size: 0.65rem;">
+
+                                                    <?= htmlspecialchars(
+                                                        $biz['user_business_role']
+                                                    ) ?>
+
+                                                </span>
+
+                                            <?php endif; ?>
+
+                                        </div>
+
+
+                                        <!-- BUSINESS NAME -->
+
+                                        <h5 class="fw-bold text-dark mb-1">
+
+                                            <?= htmlspecialchars(
+                                                $biz['business_name']
+                                            ) ?>
+
+                                        </h5>
+
+
+                                        <!-- SLUG -->
+
+                                        <p class="text-muted small mb-3">
+
+                                            <?= htmlspecialchars(
+                                                $biz['slug']
+                                            ) ?>
+
+                                        </p>
+
+
+                                        <!-- =================================
+                                             MODULES
+                                             ================================= -->
+
+                                        <div class="mb-3">
+
+                                            <div class="small fw-bold text-muted mb-2">
+
+                                                Available Modules
+
+                                            </div>
+
+
+                                            <?php if (empty($modules)): ?>
+
+                                                <span class="text-muted small">
+
+                                                    No active modules
+
+                                                </span>
+
+                                            <?php else: ?>
+
+                                                <div class="d-flex flex-wrap gap-2">
+
+                                                    <?php foreach ($modules as $module): ?>
+
+                                                        <?php
+
+                                                        $moduleKey =
+                                                            strtolower(
+                                                                trim($module)
+                                                            );
+
+                                                        switch ($moduleKey) {
+
+                                                            case 'loan':
+                                                            case 'loans':
+                                                            case 'lending':
+                                                            case 'loan management':
+
+                                                                $moduleLabel =
+                                                                    'Loan Management';
+
+                                                                $moduleIcon =
+                                                                    'bi-cash-stack';
+
+                                                                break;
+
+                                                            case 'pos':
+                                                            case 'point of sale':
+
+                                                                $moduleLabel =
+                                                                    'POS';
+
+                                                                $moduleIcon =
+                                                                    'bi-cart3';
+
+                                                                break;
+
+                                                            case 'inventory':
+
+                                                                $moduleLabel =
+                                                                    'Inventory';
+
+                                                                $moduleIcon =
+                                                                    'bi-box-seam';
+
+                                                                break;
+
+                                                            default:
+
+                                                                $moduleLabel =
+                                                                    ucfirst(
+                                                                        $module
+                                                                    );
+
+                                                                $moduleIcon =
+                                                                    'bi-grid';
+
+                                                                break;
+                                                        }
+
+                                                        ?>
+
+                                                        <span class="badge bg-light text-dark border module-badge">
+
+                                                            <i class="bi <?= $moduleIcon ?> me-1"></i>
+
+                                                            <?= htmlspecialchars(
+                                                                $moduleLabel
+                                                            ) ?>
+
+                                                        </span>
+
+                                                    <?php endforeach; ?>
+
+                                                </div>
+
+                                            <?php endif; ?>
+
+                                        </div>
+
+                                    </div>
+
+
+                                    <!-- =================================
+                                         OPEN WORKSPACE
+                                         ================================= -->
+
+                                    <form method="POST"
+                                          class="mt-auto">
+
+                                        <input type="hidden"
+                                               name="business_id"
+                                               value="<?= $businessId ?>">
+
+                                        <button type="submit"
+                                                class="btn btn-primary w-100 fw-bold rounded-3 py-2">
+
+                                            <i class="bi bi-box-arrow-in-right me-1"></i>
+
+                                            Open Workspace
+
+                                        </button>
+
+                                    </form>
+
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    <?php endforeach; ?>
+
+                </div>
+
+            <?php endif; ?>
+
+
+            <!-- =================================================
+                 SIGN OUT
+                 ================================================= -->
+
+            <div class="text-center mt-4">
+
+                <a href="index.php?page=logout"
+                   class="text-danger small text-decoration-none fw-bold">
+
+                    <i class="bi bi-box-arrow-right me-1"></i>
+
+                    Sign Out
 
                 </a>
 
             </div>
 
 
-        <?php else: ?>
-
-
-            <!-- =================================================
-                 BUSINESS GRID
-                 ================================================= -->
-
-            <div
-                class="row
-                       row-cols-1
-                       row-cols-sm-2
-                       row-cols-lg-3
-                       g-3 g-md-4
-                       justify-content-center"
-            >
-
-
-                <?php foreach ($businesses as $business): ?>
-
-                    <?php
-
-                    $businessId =
-                        (int)($business['id'] ?? 0);
-
-                    $businessNameValue =
-                        $business['business_name']
-                        ?? 'Unnamed Business';
-
-                    $businessStatus =
-                        $business['status']
-                        ?? 'active';
-
-                    $businessStatusLower =
-                        strtolower(
-                            trim($businessStatus)
-                        );
-
-
-                    $isActive =
-                        (
-                            $businessStatusLower ===
-                            'active'
-                        );
-
-                    ?>
-
-
-                    <div class="col">
-
-
-                        <!-- BUSINESS CARD -->
-
-                        <div
-                            class="card
-                                   business-card
-                                   shadow-sm"
-                        >
-
-                            <div
-                                class="card-body
-                                       d-flex
-                                       flex-column
-                                       p-3 p-md-4"
-                            >
-
-
-                                <!-- ICON -->
-
-                                <div class="business-icon">
-
-                                    <i
-                                        class="bi bi-building"
-                                    ></i>
-
-                                </div>
-
-
-                                <!-- BUSINESS INFORMATION -->
-
-                                <div
-                                    class="flex-grow-1"
-                                >
-
-                                    <h4
-                                        class="business-name
-                                               mb-2"
-                                    >
-
-                                        <?= htmlspecialchars(
-                                            $businessNameValue
-                                        ) ?>
-
-                                    </h4>
-
-
-                                    <div
-                                        class="business-status
-                                               mb-4"
-                                    >
-
-                                        <span
-                                            class="me-1"
-                                        >
-                                            Status:
-                                        </span>
-
-
-                                        <?php if ($isActive): ?>
-
-                                            <span
-                                                class="badge
-                                                       bg-success
-                                                       bg-opacity-10
-                                                       text-success
-                                                       px-2 py-1"
-                                            >
-
-                                                <i
-                                                    class="bi
-                                                           bi-check-circle-fill
-                                                           me-1"
-                                                ></i>
-
-                                                <?= htmlspecialchars(
-                                                    ucfirst(
-                                                        $businessStatus
-                                                    )
-                                                ) ?>
-
-                                            </span>
-
-                                        <?php else: ?>
-
-                                            <span
-                                                class="badge
-                                                       bg-secondary
-                                                       bg-opacity-10
-                                                       text-secondary
-                                                       px-2 py-1"
-                                            >
-
-                                                <?= htmlspecialchars(
-                                                    ucfirst(
-                                                        $businessStatus
-                                                    )
-                                                ) ?>
-
-                                            </span>
-
-                                        <?php endif; ?>
-
-                                    </div>
-
-                                </div>
-
-
-                                <!-- SELECT FORM -->
-
-                                <form
-                                    action="index.php?page=select_business"
-                                    method="POST"
-                                    class="business-select-form"
-                                >
-
-                                    <input
-                                        type="hidden"
-                                        name="business_id"
-                                        value="<?= $businessId ?>"
-                                    >
-
-
-                                    <button
-                                        type="submit"
-                                        class="btn
-                                               btn-primary
-                                               w-100
-                                               fw-bold
-                                               manage-business-btn"
-                                        <?= !$isActive
-                                            ? 'disabled'
-                                            : ''
-                                        ?>
-                                    >
-
-                                        <?php if ($isActive): ?>
-
-                                            <i
-                                                class="bi
-                                                       bi-box-arrow-in-right
-                                                       me-1"
-                                            ></i>
-
-                                            Manage Business
-
-                                        <?php else: ?>
-
-                                            <i
-                                                class="bi
-                                                       bi-lock-fill
-                                                       me-1"
-                                            ></i>
-
-                                            Business Unavailable
-
-                                        <?php endif; ?>
-
-                                    </button>
-
-                                </form>
-
-
-                            </div>
-
-                        </div>
-
-
-                    </div>
-
-
-                <?php endforeach; ?>
-
-
-            </div>
-
-
-        <?php endif; ?>
-
+        </div>
 
     </div>
 
 </div>
 
 
-<?php
+<style>
 
-// =========================================================
-// SHARED FOOTER
-// =========================================================
+.transition-card {
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease;
+}
 
-include __DIR__ . '/partials/footer.php';
+.transition-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.08) !important;
+}
 
-?>
+.module-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.45rem 0.6rem;
+}
+
+</style>
+
+
+<?php include __DIR__ . '/partials/footer.php'; ?>

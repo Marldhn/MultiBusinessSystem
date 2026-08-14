@@ -1,97 +1,60 @@
 <?php
+$pdo=Database::getConnection();
+$businessId=$_SESSION['business_id']??null;
+$userId=$_SESSION['user_id']??$_SESSION['id']??null;
 
-$pdo = Database::getConnection();
-
-$businessId = $_SESSION['business_id'] ?? null;
-
-if (!$businessId) {
+if(!$businessId){
     header('Location: index.php?page=select_business');
     exit;
 }
 
-$error = '';
-$success = '';
+if(!$userId){
+    header('Location: index.php?page=login');
+    exit;
+}
 
-/*
-|--------------------------------------------------------------------------
-| HELPER FUNCTIONS
-|--------------------------------------------------------------------------
-*/
+$error='';
+$success='';
 
-function calculateNumberOfPayments($termValue, $termUnit, $frequency)
-{
-    $termValue = max(1, (int)$termValue);
+function calculateNumberOfPayments($termValue,$termUnit,$frequency){
+    $termValue=max(1,(int)$termValue);
 
-    if ($termUnit === 'months') {
-
-        switch ($frequency) {
-
-            case 'daily':
-                return $termValue * 30;
-
-            case 'weekly':
-                return $termValue * 4;
-
-            case 'biweekly':
-                return $termValue * 2;
-
-            case 'monthly':
-            default:
-                return $termValue;
+    if($termUnit==='months'){
+        switch($frequency){
+            case'daily':return $termValue*30;
+            case'weekly':return $termValue*4;
+            case'biweekly':return $termValue*2;
+            default:return $termValue;
         }
     }
 
-    /*
-    | Term is in days
-    */
-
-    switch ($frequency) {
-
-        case 'daily':
-            return $termValue;
-
-        case 'weekly':
-            return max(1, (int)ceil($termValue / 7));
-
-        case 'biweekly':
-            return max(1, (int)ceil($termValue / 14));
-
-        case 'monthly':
-        default:
-            return max(1, (int)ceil($termValue / 30));
+    switch($frequency){
+        case'daily':return $termValue;
+        case'weekly':return max(1,(int)ceil($termValue/7));
+        case'biweekly':return max(1,(int)ceil($termValue/14));
+        default:return max(1,(int)ceil($termValue/30));
     }
 }
 
+function getNextScheduleDate(DateTime $date,$frequency){
+    $newDate=clone $date;
 
-function getNextScheduleDate(
-    DateTime $date,
-    $frequency
-) {
-    $newDate = clone $date;
-
-    switch ($frequency) {
-
-        case 'daily':
+    switch($frequency){
+        case'daily':
             $newDate->modify('+1 day');
             break;
-
-        case 'weekly':
+        case'weekly':
             $newDate->modify('+1 week');
             break;
-
-        case 'biweekly':
+        case'biweekly':
             $newDate->modify('+2 weeks');
             break;
-
-        case 'monthly':
         default:
             $newDate->modify('+1 month');
-            break;
     }
 
     return $newDate;
 }
-
 
 /*
 |--------------------------------------------------------------------------
@@ -99,86 +62,60 @@ function getNextScheduleDate(
 |--------------------------------------------------------------------------
 */
 
-if (
-    $_SERVER['REQUEST_METHOD'] === 'POST' &&
-    isset($_POST['record_payment'])
-) {
+if($_SERVER['REQUEST_METHOD']==='POST'&&isset($_POST['record_payment'])){
+    $paymentLoanId=(int)($_POST['loan_id']??0);
 
-    $paymentLoanId =
-        intval($_POST['loan_id'] ?? 0);
+    $selectedScheduleIds=$_POST['schedule_ids']??[];
 
-    $paymentAmount =
-        round(
-            floatval(
-                $_POST['payment_amount'] ?? 0
-            ),
-            2
-        );
+    if(!is_array($selectedScheduleIds)){
+        $selectedScheduleIds=[];
+    }
 
-    $paymentDate =
-        $_POST['payment_date'] ??
-        date('Y-m-d');
+    $selectedScheduleIds=array_values(
+        array_filter(
+            array_map('intval',$selectedScheduleIds),
+            fn($id)=>$id>0
+        )
+    );
 
-    $paymentNotes =
-        trim(
-            $_POST['payment_notes'] ?? ''
-        );
+    $customPaymentAmount=round(
+        (float)($_POST['custom_payment_amount']??0),
+        2
+    );
 
+    $paymentDate=$_POST['payment_date']??date('Y-m-d');
+    $paymentNotes=trim($_POST['payment_notes']??'');
 
-    if (
-        $paymentLoanId > 0 &&
-        $paymentAmount > 0
-    ) {
-
+    if($paymentLoanId>0){
         $pdo->beginTransaction();
 
-        try {
-
-            /*
-            |--------------------------------------------------------------------------
-            | Get Loan
-            |--------------------------------------------------------------------------
-            */
-
-            $loanStmt = $pdo->prepare("
+        try{
+            $loanStmt=$pdo->prepare("
                 SELECT *
                 FROM loans
-                WHERE id = ?
-                AND business_id = ?
+                WHERE id=?
+                AND business_id=?
+                AND created_by=?
                 FOR UPDATE
             ");
 
             $loanStmt->execute([
                 $paymentLoanId,
-                $businessId
+                $businessId,
+                $userId
             ]);
 
-            $loan =
-                $loanStmt->fetch(PDO::FETCH_ASSOC);
+            $loan=$loanStmt->fetch(PDO::FETCH_ASSOC);
 
-
-            if (!$loan) {
-                throw new Exception(
-                    "Loan record not found."
-                );
+            if(!$loan){
+                throw new Exception('Loan record not found.');
             }
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | Get Current Payments
-            |--------------------------------------------------------------------------
-            */
-
-            $sumStmt = $pdo->prepare("
-                SELECT
-                    COALESCE(
-                        SUM(payment_amount),
-                        0
-                    )
+            $sumStmt=$pdo->prepare("
+                SELECT COALESCE(SUM(payment_amount),0)
                 FROM loan_payments
-                WHERE loan_id = ?
-                AND business_id = ?
+                WHERE loan_id=?
+                AND business_id=?
             ");
 
             $sumStmt->execute([
@@ -186,77 +123,102 @@ if (
                 $businessId
             ]);
 
-            $totalPaidBefore =
-                round(
-                    floatval(
-                        $sumStmt->fetchColumn()
-                    ),
-                    2
-                );
+            $totalPaidBefore=round(
+                (float)$sumStmt->fetchColumn(),
+                2
+            );
 
+            $totalPayable=round(
+                (float)$loan['total_payable'],
+                2
+            );
 
-            $totalPayable =
-                round(
-                    floatval(
-                        $loan['total_payable']
-                    ),
-                    2
-                );
+            $remainingBefore=round(
+                $totalPayable-$totalPaidBefore,
+                2
+            );
 
-
-            $remainingBefore =
-                round(
-                    $totalPayable -
-                    $totalPaidBefore,
-                    2
-                );
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Prevent Overpayment
-            |--------------------------------------------------------------------------
-            */
-
-            if ($remainingBefore <= 0) {
-
+            if($remainingBefore<=0){
                 throw new Exception(
-                    "This loan is already fully paid."
+                    'This loan is already fully paid.'
                 );
             }
 
-
-            if (
-                $paymentAmount >
-                $remainingBefore
-            ) {
-
-                throw new Exception(
-                    "Payment cannot be greater than the remaining balance of ₱" .
-                    number_format(
-                        $remainingBefore,
-                        2
+            if(!empty($selectedScheduleIds)){
+                $placeholders=implode(
+                    ',',
+                    array_fill(
+                        0,
+                        count($selectedScheduleIds),
+                        '?'
                     )
                 );
+
+                $scheduleStmt=$pdo->prepare("
+                    SELECT id,due_date,amount_due,status
+                    FROM loan_schedules
+                    WHERE loan_id=?
+                    AND id IN ($placeholders)
+                    ORDER BY due_date ASC,id ASC
+                    FOR UPDATE
+                ");
+
+                $scheduleStmt->execute(
+                    array_merge(
+                        [$paymentLoanId],
+                        $selectedScheduleIds
+                    )
+                );
+
+                $selectedSchedules=$scheduleStmt->fetchAll(
+                    PDO::FETCH_ASSOC
+                );
+
+                if(
+                    count($selectedSchedules)!==
+                    count($selectedScheduleIds)
+                ){
+                    throw new Exception(
+                        'One or more selected payment schedules could not be found.'
+                    );
+                }
+
+                $paymentAmount=0;
+
+                foreach($selectedSchedules as $schedule){
+                    $paymentAmount+=round(
+                        (float)$schedule['amount_due'],
+                        2
+                    );
+                }
+
+                $paymentAmount=round($paymentAmount,2);
+            }else{
+                $paymentAmount=$customPaymentAmount;
             }
 
+            if($paymentAmount>$remainingBefore){
+                throw new Exception(
+                    'Payment amount exceeds the remaining loan balance of ₱'.
+                    number_format($remainingBefore,2)
+                );
+            }
 
-            /*
-            |--------------------------------------------------------------------------
-            | Insert Payment
-            |--------------------------------------------------------------------------
-            */
+            if($paymentAmount<=0){
+                throw new Exception(
+                    'Please enter a valid payment amount or select at least one installment.'
+                );
+            }
 
-            $payStmt = $pdo->prepare("
-                INSERT INTO loan_payments
-                (
+            $payStmt=$pdo->prepare("
+                INSERT INTO loan_payments(
                     business_id,
                     loan_id,
                     payment_amount,
                     payment_date,
                     notes
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES(?,?,?,?,?)
             ");
 
             $payStmt->execute([
@@ -267,175 +229,108 @@ if (
                 $paymentNotes
             ]);
 
+            $totalPaidAfter=round(
+                $totalPaidBefore+$paymentAmount,
+                2
+            );
 
-            /*
-            |--------------------------------------------------------------------------
-            | Calculate New Total
-            |--------------------------------------------------------------------------
-            */
+            if(!empty($selectedScheduleIds)){
+                $updateSchedule=$pdo->prepare("
+                    UPDATE loan_schedules
+                    SET status='paid'
+                    WHERE id=?
+                    AND loan_id=?
+                ");
 
-            $totalPaidAfter =
-                round(
-                    $totalPaidBefore +
-                    $paymentAmount,
-                    2
-                );
+                foreach($selectedSchedules as $schedule){
+                    $updateSchedule->execute([
+                        $schedule['id'],
+                        $paymentLoanId
+                    ]);
+                }
+            }
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | Update Schedule Statuses
-            |--------------------------------------------------------------------------
-            |
-            | Payments are applied against schedules in order.
-            |
-            */
-
-            $scheduleStmt = $pdo->prepare("
-                SELECT
-                    id,
-                    amount_due,
-                    status
+            $allScheduleStmt=$pdo->prepare("
+                SELECT id,amount_due,status
                 FROM loan_schedules
-                WHERE loan_id = ?
-                ORDER BY due_date ASC, id ASC
+                WHERE loan_id=?
+                ORDER BY due_date ASC,id ASC
+                FOR UPDATE
             ");
 
-            $scheduleStmt->execute([
+            $allScheduleStmt->execute([
                 $paymentLoanId
             ]);
 
-            $schedules =
-                $scheduleStmt->fetchAll(
-                    PDO::FETCH_ASSOC
-                );
+            $allSchedules=$allScheduleStmt->fetchAll(
+                PDO::FETCH_ASSOC
+            );
 
+            if(!empty($allSchedules)){
+                $remainingPaymentForSchedules=$totalPaidAfter;
 
-            $remainingPaymentForSchedules =
-                $totalPaidAfter;
-
-
-            foreach (
-                $schedules
-                as $schedule
-            ) {
-
-                $scheduleAmount =
-                    floatval(
-                        $schedule['amount_due']
-                    );
-
-
-                if (
-                    $remainingPaymentForSchedules >=
-                    $scheduleAmount
-                ) {
-
-                    $scheduleStatus =
-                        'paid';
-
-                } elseif (
-                    $remainingPaymentForSchedules > 0
-                ) {
-
-                    $scheduleStatus =
-                        'partially_paid';
-
-                } else {
-
-                    $scheduleStatus =
-                        'unpaid';
-                }
-
-
-                $updateSchedule =
-                    $pdo->prepare("
-                        UPDATE loan_schedules
-                        SET status = ?
-                        WHERE id = ?
-                        AND loan_id = ?
-                    ");
-
-                $updateSchedule->execute([
-                    $scheduleStatus,
-                    $schedule['id'],
-                    $paymentLoanId
-                ]);
-
-
-                $remainingPaymentForSchedules =
-                    max(
-                        0,
-                        $remainingPaymentForSchedules -
-                        $scheduleAmount
-                    );
-            }
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Determine Loan Status
-            |--------------------------------------------------------------------------
-            |
-            | loans.status DOES NOT contain "overdue".
-            | We only use:
-            |
-            | pending
-            | active
-            | completed
-            | defaulted
-            |
-            */
-
-            if (
-                $totalPaidAfter >=
-                $totalPayable
-            ) {
-
-                $newStatus =
-                    'completed';
-
-            } else {
-
-                $newStatus =
-                    'active';
-            }
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Update Loan
-            |--------------------------------------------------------------------------
-            */
-
-            $updateLoanStmt =
-                $pdo->prepare("
-                    UPDATE loans
-                    SET status = ?
-                    WHERE id = ?
-                    AND business_id = ?
+                $updateScheduleStatus=$pdo->prepare("
+                    UPDATE loan_schedules
+                    SET status=?
+                    WHERE id=?
+                    AND loan_id=?
                 ");
+
+                foreach($allSchedules as $schedule){
+                    $scheduleAmount=round(
+                        (float)$schedule['amount_due'],
+                        2
+                    );
+
+                    if($remainingPaymentForSchedules>=$scheduleAmount){
+                        $scheduleStatus='paid';
+                    }elseif($remainingPaymentForSchedules>0){
+                        $scheduleStatus='partially_paid';
+                    }else{
+                        $scheduleStatus='unpaid';
+                    }
+
+                    $updateScheduleStatus->execute([
+                        $scheduleStatus,
+                        $schedule['id'],
+                        $paymentLoanId
+                    ]);
+
+                    $remainingPaymentForSchedules=max(
+                        0,
+                        round(
+                            $remainingPaymentForSchedules-$scheduleAmount,
+                            2
+                        )
+                    );
+                }
+            }
+
+            $newStatus=$totalPaidAfter>=$totalPayable
+                ?'completed'
+                :'active';
+
+            $updateLoanStmt=$pdo->prepare("
+                UPDATE loans
+                SET status=?
+                WHERE id=?
+                AND business_id=?
+                AND created_by=?
+            ");
 
             $updateLoanStmt->execute([
                 $newStatus,
                 $paymentLoanId,
-                $businessId
+                $businessId,
+                $userId
             ]);
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | Credit Payment Back To Funding Account
-            |--------------------------------------------------------------------------
-            */
-
-            $updateAcc =
-                $pdo->prepare("
-                    UPDATE loan_accounts
-                    SET balance = balance + ?
-                    WHERE id = ?
-                    AND business_id = ?
-                ");
+            $updateAcc=$pdo->prepare("
+                UPDATE loan_accounts
+                SET balance=balance+?
+                WHERE id=?
+                AND business_id=?
+            ");
 
             $updateAcc->execute([
                 $paymentAmount,
@@ -443,26 +338,16 @@ if (
                 $businessId
             ]);
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | Account Transaction
-            |--------------------------------------------------------------------------
-            */
-
-            $txStmt =
-                $pdo->prepare("
-                    INSERT INTO loan_account_transactions
-                    (
-                        business_id,
-                        account_id,
-                        type,
-                        amount,
-                        description
-                    )
-                    VALUES
-                    (?, ?, 'CREDIT', ?, ?)
-                ");
+            $txStmt=$pdo->prepare("
+                INSERT INTO loan_account_transactions(
+                    business_id,
+                    account_id,
+                    type,
+                    amount,
+                    description
+                )
+                VALUES(?,?, 'CREDIT',?,?)
+            ");
 
             $txStmt->execute([
                 $businessId,
@@ -471,342 +356,207 @@ if (
                 "Payment received for Loan #{$paymentLoanId}"
             ]);
 
-
             $pdo->commit();
-
 
             header(
                 'Location: index.php?page=loans&success_payment=1'
             );
-
             exit;
 
-
-        } catch (Exception $e) {
-
-            if (
-                $pdo->inTransaction()
-            ) {
+        }catch(Exception $e){
+            if($pdo->inTransaction()){
                 $pdo->rollBack();
             }
 
-
-            $error =
-                "Failed to record payment: " .
-                $e->getMessage();
+            $error='Failed to record payment: '.$e->getMessage();
         }
-
-    } else {
-
-        $error =
-            "Please provide a valid payment amount.";
+    }else{
+        $error='Invalid loan selection.';
     }
 }
 
-
 /*
 |--------------------------------------------------------------------------
-| ISSUE NEW LOAN
+| ISSUE LOAN
 |--------------------------------------------------------------------------
 */
 
-if (
-    $_SERVER['REQUEST_METHOD'] === 'POST' &&
-    isset($_POST['issue_loan'])
-) {
+if($_SERVER['REQUEST_METHOD']==='POST'&&isset($_POST['issue_loan'])){
+    $borrowerId=(int)($_POST['borrower_id']??0);
+    $accountId=(int)($_POST['account_id']??0);
 
-    $borrowerId =
-        intval(
-            $_POST['borrower_id'] ?? 0
-        );
+    $referenceNumber=!empty($_POST['reference_number'])
+        ?trim($_POST['reference_number'])
+        :null;
 
-    $accountId =
-        intval(
-            $_POST['account_id'] ?? 0
-        );
+    $principalAmount=round(
+        (float)($_POST['principal_amount']??0),
+        2
+    );
 
-    $referenceNumber =
-        !empty(
-            $_POST['reference_number']
-        )
-            ? trim(
-                $_POST['reference_number']
-            )
-            : null;
+    $interestRate=round(
+        (float)($_POST['interest_rate']??0),
+        2
+    );
 
+    $termValue=(int)($_POST['term_value']??30);
+    $termUnit=$_POST['term_unit']??'days';
+    $paymentFrequency=$_POST['payment_frequency']??'monthly';
+    $loanDate=$_POST['loan_date']??date('Y-m-d');
 
-    $principalAmount =
-        round(
-            floatval(
-                $_POST['principal_amount'] ?? 0
-            ),
-            2
-        );
-
-
-    $interestRate =
-        round(
-            floatval(
-                $_POST['interest_rate'] ?? 0
-            ),
-            2
-        );
-
-
-    $termValue =
-        intval(
-            $_POST['term_value'] ?? 30
-        );
-
-
-    $termUnit =
-        $_POST['term_unit'] ??
-        'days';
-
-
-    $paymentFrequency =
-        $_POST['payment_frequency'] ??
-        'monthly';
-
-
-    $loanDate =
-        $_POST['loan_date'] ??
-        date('Y-m-d');
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | Validate Frequency
-    |--------------------------------------------------------------------------
-    */
-
-    $allowedFrequencies = [
+    $allowedFrequencies=[
         'daily',
         'weekly',
         'biweekly',
         'monthly'
     ];
 
-
-    if (
-        !in_array(
-            $paymentFrequency,
-            $allowedFrequencies,
-            true
-        )
-    ) {
-
-        $paymentFrequency =
-            'monthly';
+    if(!in_array(
+        $paymentFrequency,
+        $allowedFrequencies,
+        true
+    )){
+        $paymentFrequency='monthly';
     }
 
+    $collateralItem=trim(
+        $_POST['collateral_item']??''
+    );
 
-    /*
-    |--------------------------------------------------------------------------
-    | Collateral
-    |--------------------------------------------------------------------------
-    */
+    $collateralDesc=trim(
+        $_POST['collateral_description']??''
+    );
 
-    $collateralItem =
-        trim(
-            $_POST['collateral_item'] ?? ''
-        );
+    $collateralValue=(float)(
+        $_POST['collateral_value']??0
+    );
 
-    $collateralDesc =
-        trim(
-            $_POST['collateral_description'] ?? ''
-        );
+    if(
+        $borrowerId>0&&
+        $accountId>0&&
+        $principalAmount>0&&
+        $termValue>0
+    ){
+        try{
+            $dateObj=new DateTime($loanDate);
 
-    $collateralValue =
-        floatval(
-            $_POST['collateral_value'] ?? 0
-        );
-
-
-    if (
-        $borrowerId > 0 &&
-        $accountId > 0 &&
-        $principalAmount > 0 &&
-        $termValue > 0
-    ) {
-
-        /*
-        |--------------------------------------------------------------------------
-        | Calculate Due Date
-        |--------------------------------------------------------------------------
-        */
-
-        try {
-
-            $dateObj =
-                new DateTime(
-                    $loanDate
-                );
-
-
-            if (
-                $termUnit === 'months'
-            ) {
-
+            if($termUnit==='months'){
                 $dateObj->modify(
                     "+{$termValue} months"
                 );
-
-            } else {
-
+            }else{
                 $dateObj->modify(
                     "+{$termValue} days"
                 );
             }
 
+            $dueDate=$dateObj->format('Y-m-d');
 
-            $dueDate =
-                $dateObj->format(
-                    'Y-m-d'
-                );
-
-        } catch (Exception $e) {
-
-            $error =
-                "Invalid loan date.";
-
-            $dueDate =
-                null;
+        }catch(Exception $e){
+            $error='Invalid loan date.';
+            $dueDate=null;
         }
 
+        if(!$error){
+            $numberOfPayments=calculateNumberOfPayments(
+                $termValue,
+                $termUnit,
+                $paymentFrequency
+            );
 
-        if (!$error) {
-
-            /*
-            |--------------------------------------------------------------------------
-            | Calculate Number Of Payments
-            |--------------------------------------------------------------------------
-            */
-
-            $numberOfPayments =
-                calculateNumberOfPayments(
-                    $termValue,
-                    $termUnit,
-                    $paymentFrequency
-                );
-
-
-            if (
-                $numberOfPayments <= 0
-            ) {
-
-                $numberOfPayments = 1;
+            if($numberOfPayments<=0){
+                $numberOfPayments=1;
             }
 
-
             /*
             |--------------------------------------------------------------------------
-            | Check Funding Account
+            | CHECK BORROWER BELONGS TO THIS USER
             |--------------------------------------------------------------------------
             */
 
-            $accStmt =
-                $pdo->prepare("
+            $borrowerStmt=$pdo->prepare("
+                SELECT id
+                FROM loan_borrowers
+                WHERE id=?
+                AND business_id=?
+                AND created_by=?
+            ");
+
+            $borrowerStmt->execute([
+                $borrowerId,
+                $businessId,
+                $userId
+            ]);
+
+            $borrowerExists=$borrowerStmt->fetchColumn();
+
+            if(!$borrowerExists){
+                $error='Selected borrower was not found or does not belong to your account.';
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | CHECK ACCOUNT
+            |--------------------------------------------------------------------------
+            */
+
+            if(!$error){
+                $accStmt=$pdo->prepare("
                     SELECT *
                     FROM loan_accounts
-                    WHERE id = ?
-                    AND business_id = ?
+                    WHERE id=?
+                    AND business_id=?
                     FOR UPDATE
                 ");
 
-            $accStmt->execute([
-                $accountId,
-                $businessId
-            ]);
+                $accStmt->execute([
+                    $accountId,
+                    $businessId
+                ]);
 
-
-            $account =
-                $accStmt->fetch(
+                $account=$accStmt->fetch(
                     PDO::FETCH_ASSOC
                 );
 
+                if(!$account){
+                    $error='Selected funding account was not found.';
+                }elseif(
+                    (float)$account['balance']<
+                    $principalAmount
+                ){
+                    $error='Insufficient funds in the selected account/wallet.';
+                }else{
+                    $pdo->beginTransaction();
 
-            if (!$account) {
-
-                $error =
-                    "Selected funding account was not found.";
-
-            } elseif (
-                floatval(
-                    $account['balance']
-                ) <
-                $principalAmount
-            ) {
-
-                $error =
-                    "Insufficient funds in the selected account/wallet.";
-
-            } else {
-
-                $pdo->beginTransaction();
-
-
-                try {
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Calculate Total Payable
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $interestAmount =
-                        round(
-                            $principalAmount *
-                            (
-                                $interestRate /
-                                100
-                            ),
+                    try{
+                        $interestAmount=round(
+                            $principalAmount*
+                            ($interestRate/100),
                             2
                         );
 
-
-                    $totalPayable =
-                        round(
-                            $principalAmount +
+                        $totalPayable=round(
+                            $principalAmount+
                             $interestAmount,
                             2
                         );
 
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Calculate Fixed Payment
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $fixedPaymentAmount =
-                        round(
-                            $totalPayable /
+                        $fixedPaymentAmount=round(
+                            $totalPayable/
                             $numberOfPayments,
                             2
                         );
 
+                        /*
+                        |--------------------------------------------------------------------------
+                        | CREATE LOAN WITH CREATED_BY
+                        |--------------------------------------------------------------------------
+                        */
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Adjust Last Payment
-                    |--------------------------------------------------------------------------
-                    |
-                    | This prevents rounding problems.
-                    |
-                    */
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Insert Loan
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $loanStmt =
-                        $pdo->prepare("
-                            INSERT INTO loans
-                            (
+                        $loanStmt=$pdo->prepare("
+                            INSERT INTO loans(
                                 business_id,
+                                created_by,
                                 borrower_id,
                                 account_id,
                                 reference_number,
@@ -821,287 +571,188 @@ if (
                                 fixed_payment_amount,
                                 status
                             )
-                            VALUES
-                            (
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                ?,
-                                'active'
+                            VALUES(
+                                ?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active'
                             )
                         ");
 
+                        $loanStmt->execute([
+                            $businessId,
+                            $userId,
+                            $borrowerId,
+                            $accountId,
+                            $referenceNumber,
+                            $principalAmount,
+                            $interestRate,
+                            $totalPayable,
+                            $loanDate,
+                            $dueDate,
+                            $termValue,
+                            $termUnit,
+                            $paymentFrequency,
+                            $fixedPaymentAmount
+                        ]);
 
-                    $loanStmt->execute([
-                        $businessId,
-                        $borrowerId,
-                        $accountId,
-                        $referenceNumber,
-                        $principalAmount,
-                        $interestRate,
-                        $totalPayable,
-                        $loanDate,
-                        $dueDate,
-                        $termValue,
-                        $termUnit,
-                        $paymentFrequency,
-                        $fixedPaymentAmount
-                    ]);
+                        $loanId=$pdo->lastInsertId();
 
+                        /*
+                        |--------------------------------------------------------------------------
+                        | CREATE PAYMENT SCHEDULE
+                        |--------------------------------------------------------------------------
+                        */
 
-                    $loanId =
-                        $pdo->lastInsertId();
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Create Loan Schedules
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $scheduleDate =
-                        new DateTime(
+                        $scheduleDate=new DateTime(
                             $loanDate
                         );
 
-
-                    $scheduleInsert =
-                        $pdo->prepare("
-                            INSERT INTO loan_schedules
-                            (
+                        $scheduleInsert=$pdo->prepare("
+                            INSERT INTO loan_schedules(
                                 loan_id,
                                 due_date,
                                 amount_due,
                                 status
                             )
-                            VALUES
-                            (
-                                ?,
-                                ?,
-                                ?,
-                                'unpaid'
-                            )
+                            VALUES(?,?,?,'unpaid')
                         ");
 
+                        $scheduledTotal=0;
 
-                    $scheduledTotal = 0;
-
-
-                    for (
-                        $i = 1;
-                        $i <= $numberOfPayments;
-                        $i++
-                    ) {
-
-                        $scheduleDate =
-                            getNextScheduleDate(
+                        for(
+                            $i=1;
+                            $i<=$numberOfPayments;
+                            $i++
+                        ){
+                            $scheduleDate=getNextScheduleDate(
                                 $scheduleDate,
                                 $paymentFrequency
                             );
 
+                            $scheduleAmount=$i===$numberOfPayments
+                                ?round(
+                                    $totalPayable-
+                                    $scheduledTotal,
+                                    2
+                                )
+                                :$fixedPaymentAmount;
+
+                            $scheduledTotal+=
+                                $scheduleAmount;
+
+                            $scheduleInsert->execute([
+                                $loanId,
+                                $scheduleDate->format(
+                                    'Y-m-d'
+                                ),
+                                $scheduleAmount
+                            ]);
+                        }
 
                         /*
                         |--------------------------------------------------------------------------
-                        | Last Payment Adjustment
+                        | COLLATERAL IMAGE
                         |--------------------------------------------------------------------------
                         */
 
-                        if (
-                            $i ===
-                            $numberOfPayments
-                        ) {
+                        $imagePath=null;
 
-                            $scheduleAmount =
-                                round(
-                                    $totalPayable -
-                                    $scheduledTotal,
-                                    2
-                                );
+                        if(
+                            !empty($collateralItem)&&
+                            isset($_FILES['collateral_image'])
+                        ){
+                            $uploadError=
+                                $_FILES['collateral_image']['error'];
 
-                        } else {
+                            if(
+                                $uploadError===
+                                UPLOAD_ERR_OK
+                            ){
+                                $fileTmpPath=
+                                    $_FILES['collateral_image']['tmp_name'];
 
-                            $scheduleAmount =
-                                $fixedPaymentAmount;
-                        }
+                                $fileName=
+                                    $_FILES['collateral_image']['name'];
 
+                                $fileExtension=
+                                    strtolower(
+                                        pathinfo(
+                                            $fileName,
+                                            PATHINFO_EXTENSION
+                                        )
+                                    );
 
-                        $scheduledTotal +=
-                            $scheduleAmount;
+                                $allowedExtensions=[
+                                    'jpg',
+                                    'jpeg',
+                                    'png',
+                                    'webp'
+                                ];
 
-
-                        $scheduleInsert->execute([
-                            $loanId,
-                            $scheduleDate->format(
-                                'Y-m-d'
-                            ),
-                            $scheduleAmount
-                        ]);
-                    }
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Handle Collateral Image
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $imagePath =
-                        null;
-
-
-                    if (
-                        !empty(
-                            $collateralItem
-                        ) &&
-                        isset(
-                            $_FILES[
-                                'collateral_image'
-                            ]
-                        )
-                    ) {
-
-                        $uploadError =
-                            $_FILES[
-                                'collateral_image'
-                            ]['error'];
-
-
-                        if (
-                            $uploadError ===
-                            UPLOAD_ERR_OK
-                        ) {
-
-                            $fileTmpPath =
-                                $_FILES[
-                                    'collateral_image'
-                                ]['tmp_name'];
-
-
-                            $fileName =
-                                $_FILES[
-                                    'collateral_image'
-                                ]['name'];
-
-
-                            $fileExtension =
-                                strtolower(
-                                    pathinfo(
-                                        $fileName,
-                                        PATHINFO_EXTENSION
-                                    )
-                                );
-
-
-                            $allowedExtensions = [
-                                'jpg',
-                                'jpeg',
-                                'png',
-                                'webp'
-                            ];
-
-
-                            if (
-                                !in_array(
+                                if(!in_array(
                                     $fileExtension,
                                     $allowedExtensions,
                                     true
-                                )
-                            ) {
+                                )){
+                                    throw new Exception(
+                                        'Invalid collateral image format. Allowed: JPG, JPEG, PNG, WEBP.'
+                                    );
+                                }
 
-                                throw new Exception(
-                                    'Invalid collateral image format. Allowed: JPG, JPEG, PNG, WEBP.'
-                                );
-                            }
+                                $newFileName=
+                                    'col_'.$loanId.'_'.
+                                    time().'.'.
+                                    $fileExtension;
 
+                                $uploadFileDir=
+                                    __DIR__.
+                                    '/../../../public/uploads/collaterals/';
 
-                            $newFileName =
-                                'col_' .
-                                $loanId .
-                                '_' .
-                                time() .
-                                '.' .
-                                $fileExtension;
-
-
-                            $uploadFileDir =
-                                __DIR__ .
-                                '/../../../public/uploads/collaterals/';
-
-
-                            if (
-                                !is_dir(
+                                if(!is_dir(
                                     $uploadFileDir
-                                )
-                            ) {
+                                )){
+                                    mkdir(
+                                        $uploadFileDir,
+                                        0755,
+                                        true
+                                    );
+                                }
 
-                                mkdir(
-                                    $uploadFileDir,
-                                    0755,
-                                    true
-                                );
-                            }
+                                $destPath=
+                                    $uploadFileDir.
+                                    $newFileName;
 
-
-                            $destPath =
-                                $uploadFileDir .
-                                $newFileName;
-
-
-                            if (
-                                !move_uploaded_file(
+                                if(!move_uploaded_file(
                                     $fileTmpPath,
                                     $destPath
-                                )
-                            ) {
+                                )){
+                                    throw new Exception(
+                                        'Failed to move uploaded collateral image.'
+                                    );
+                                }
 
+                                $imagePath=
+                                    'uploads/collaterals/'.
+                                    $newFileName;
+
+                            }elseif(
+                                $uploadError!==
+                                UPLOAD_ERR_NO_FILE
+                            ){
                                 throw new Exception(
-                                    'Failed to move uploaded collateral image.'
+                                    'Collateral image upload failed. Error code: '.
+                                    $uploadError
                                 );
                             }
-
-
-                            $imagePath =
-                                'uploads/collaterals/' .
-                                $newFileName;
                         }
-                        elseif (
-                            $uploadError !==
-                            UPLOAD_ERR_NO_FILE
-                        ) {
 
-                            throw new Exception(
-                                'Collateral image upload failed. Error code: ' .
-                                $uploadError
-                            );
-                        }
-                    }
+                        /*
+                        |--------------------------------------------------------------------------
+                        | SAVE COLLATERAL
+                        |--------------------------------------------------------------------------
+                        */
 
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Insert Collateral
-                    |--------------------------------------------------------------------------
-                    */
-
-                    if (
-                        !empty(
-                            $collateralItem
-                        )
-                    ) {
-
-                        $colStmt =
-                            $pdo->prepare("
-                                INSERT INTO loan_collaterals
-                                (
+                        if(!empty($collateralItem)){
+                            $colStmt=$pdo->prepare("
+                                INSERT INTO loan_collaterals(
                                     business_id,
                                     loan_id,
                                     item_name,
@@ -1109,304 +760,262 @@ if (
                                     estimated_value,
                                     image_path
                                 )
-                                VALUES (?, ?, ?, ?, ?, ?)
+                                VALUES(?,?,?,?,?,?)
                             ");
 
+                            $colStmt->execute([
+                                $businessId,
+                                $loanId,
+                                $collateralItem,
+                                $collateralDesc,
+                                $collateralValue,
+                                $imagePath
+                            ]);
+                        }
 
-                        $colStmt->execute([
-                            $businessId,
-                            $loanId,
-                            $collateralItem,
-                            $collateralDesc,
-                            $collateralValue,
-                            $imagePath
-                        ]);
-                    }
+                        /*
+                        |--------------------------------------------------------------------------
+                        | DEDUCT ACCOUNT
+                        |--------------------------------------------------------------------------
+                        */
 
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Deduct Funding Account
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $updateAcc =
-                        $pdo->prepare("
+                        $updateAcc=$pdo->prepare("
                             UPDATE loan_accounts
-                            SET balance = balance - ?
-                            WHERE id = ?
-                            AND business_id = ?
+                            SET balance=balance-?
+                            WHERE id=?
+                            AND business_id=?
                         ");
 
+                        $updateAcc->execute([
+                            $principalAmount,
+                            $accountId,
+                            $businessId
+                        ]);
 
-                    $updateAcc->execute([
-                        $principalAmount,
-                        $accountId,
-                        $businessId
-                    ]);
+                        /*
+                        |--------------------------------------------------------------------------
+                        | TRANSACTION
+                        |--------------------------------------------------------------------------
+                        */
 
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Record DEBIT Transaction
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $txStmt =
-                        $pdo->prepare("
-                            INSERT INTO loan_account_transactions
-                            (
+                        $txStmt=$pdo->prepare("
+                            INSERT INTO loan_account_transactions(
                                 business_id,
                                 account_id,
                                 type,
                                 amount,
                                 description
                             )
-                            VALUES
-                            (
-                                ?,
-                                ?,
+                            VALUES(
+                                ?,?,
                                 'DEBIT',
                                 ?,
                                 ?
                             )
                         ");
 
+                        $txStmt->execute([
+                            $businessId,
+                            $accountId,
+                            $principalAmount,
+                            "Loan #{$loanId} disbursement"
+                        ]);
 
-                    $txStmt->execute([
-                        $businessId,
-                        $accountId,
-                        $principalAmount,
-                        "Loan #{$loanId} disbursement"
-                    ]);
+                        $pdo->commit();
 
+                        header(
+                            'Location: index.php?page=loans&success=1'
+                        );
+                        exit;
 
-                    $pdo->commit();
+                    }catch(Exception $e){
+                        if($pdo->inTransaction()){
+                            $pdo->rollBack();
+                        }
 
-
-                    header(
-                        'Location: index.php?page=loans&success=1'
-                    );
-
-                    exit;
-
-
-                } catch (Exception $e) {
-
-                    if (
-                        $pdo->inTransaction()
-                    ) {
-
-                        $pdo->rollBack();
+                        $error=
+                            'Failed to issue loan: '.
+                            $e->getMessage();
                     }
-
-
-                    $error =
-                        "Failed to issue loan: " .
-                        $e->getMessage();
                 }
             }
         }
-
-    } else {
-
-        $error =
-            "Please fill in all required fields correctly.";
+    }else{
+        $error=
+            'Please fill in all required fields correctly.';
     }
 }
 
-
-/*
-|--------------------------------------------------------------------------
-| SUCCESS MESSAGES
-|--------------------------------------------------------------------------
-*/
-
-if (
-    isset(
-        $_GET['success']
-    )
-) {
-
-    $success =
-        "Loan issued successfully with payment schedule!";
+if(isset($_GET['success'])){
+    $success=
+        'Loan issued successfully with payment schedule!';
 }
 
-
-if (
-    isset(
-        $_GET['success_payment']
-    )
-) {
-
-    $success =
-        "Payment recorded successfully!";
+if(isset($_GET['success_payment'])){
+    $success='Payment recorded successfully!';
 }
 
-
 /*
 |--------------------------------------------------------------------------
-| PAGE SETTINGS
+| FILTERS
 |--------------------------------------------------------------------------
 */
 
-$activePage =
-    'loans';
+$activePage='loans';
+$pageTitle='Loans Management - Loan Management';
 
-$pageTitle =
-    "Loans Management - Loan Management";
+$search=trim(
+    $_GET['search']??''
+);
 
+$statusFilter=strtolower(
+    trim($_GET['status']??'all')
+);
 
-/*
-|--------------------------------------------------------------------------
-| SEARCH / FILTER / SORT
-|--------------------------------------------------------------------------
-*/
-
-$search =
-    trim(
-        $_GET['search'] ?? ''
-    );
-
-
-$statusFilter =
-    strtolower(
-        trim(
-            $_GET['status'] ?? 'all'
-        )
-    );
-
-
-$sort =
-    $_GET['sort'] ??
-    'newest';
-
+$sort=$_GET['sort']??'newest';
 
 /*
 |--------------------------------------------------------------------------
-| FETCH LOANS
+| LOAD ONLY USER'S LOANS
 |--------------------------------------------------------------------------
 */
 
-$stmt =
-    $pdo->prepare("
-        SELECT
-
-            l.*,
-
-            CONCAT(
-                b.first_name,
-                ' ',
-                b.last_name
-            ) AS borrower_name,
-
-            a.account_name,
-
-            c.item_name,
-            c.description AS collateral_desc,
-            c.estimated_value,
-            c.image_path,
-
+$stmt=$pdo->prepare("
+    SELECT
+        l.*,
+        CONCAT(
+            b.first_name,
+            ' ',
+            b.last_name
+        ) AS borrower_name,
+        a.account_name,
+        c.item_name,
+        c.description AS collateral_desc,
+        c.estimated_value,
+        c.image_path,
+        COALESCE(
+            SUM(p.payment_amount),
+            0
+        ) AS total_paid,
+        (
+            l.total_payable-
             COALESCE(
                 SUM(p.payment_amount),
                 0
-            ) AS total_paid,
-
-            (
-                l.total_payable -
-                COALESCE(
-                    SUM(p.payment_amount),
-                    0
-                )
-            ) AS remaining_balance
-
-        FROM loans l
-
-        JOIN loan_borrowers b
-            ON l.borrower_id = b.id
-
-        JOIN loan_accounts a
-            ON l.account_id = a.id
-
-        LEFT JOIN loan_collaterals c
-            ON l.id = c.loan_id
-
-        LEFT JOIN loan_payments p
-            ON l.id = p.loan_id
-            AND p.business_id = l.business_id
-
-        WHERE l.business_id = ?
-
-        GROUP BY l.id
-
-        ORDER BY l.created_at DESC
-    ");
-
+            )
+        ) AS remaining_balance
+    FROM loans l
+    JOIN loan_borrowers b
+        ON l.borrower_id=b.id
+    JOIN loan_accounts a
+        ON l.account_id=a.id
+    LEFT JOIN loan_collaterals c
+        ON l.id=c.loan_id
+    LEFT JOIN loan_payments p
+        ON l.id=p.loan_id
+        AND p.business_id=l.business_id
+    WHERE l.business_id=?
+    AND l.created_by=?
+    GROUP BY l.id
+    ORDER BY l.created_at DESC
+");
 
 $stmt->execute([
-    $businessId
+    $businessId,
+    $userId
 ]);
 
-
-$loans =
-    $stmt->fetchAll(
-        PDO::FETCH_ASSOC
-    );
-
+$loans=$stmt->fetchAll(
+    PDO::FETCH_ASSOC
+);
 
 /*
 |--------------------------------------------------------------------------
-| DETERMINE DISPLAY STATUS
+| LOAD SCHEDULES
 |--------------------------------------------------------------------------
 */
 
-foreach (
-    $loans
-    as &$loan
-) {
+$loanSchedules=[];
 
-    $remaining =
-        floatval(
-            $loan['remaining_balance']
+if(!empty($loans)){
+    $loanIds=array_values(
+        array_unique(
+            array_map(
+                fn($loan)=>(int)$loan['id'],
+                $loans
+            )
+        )
+    );
+
+    if(!empty($loanIds)){
+        $placeholders=implode(
+            ',',
+            array_fill(
+                0,
+                count($loanIds),
+                '?'
+            )
         );
 
+        $scheduleStmt=$pdo->prepare("
+            SELECT
+                id,
+                loan_id,
+                due_date,
+                amount_due,
+                status
+            FROM loan_schedules
+            WHERE loan_id IN ($placeholders)
+            ORDER BY due_date ASC,id ASC
+        ");
 
-    $dueDate =
-        strtotime(
-            $loan['due_date']
+        $scheduleStmt->execute(
+            $loanIds
         );
 
+        foreach(
+            $scheduleStmt->fetchAll(
+                PDO::FETCH_ASSOC
+            ) as $schedule
+        ){
+            $loanId=(int)$schedule['loan_id'];
 
-    $today =
-        strtotime(
-            date('Y-m-d')
-        );
+            $loanSchedules[$loanId][]=
+                $schedule;
+        }
+    }
+}
 
+/*
+|--------------------------------------------------------------------------
+| DISPLAY STATUS
+|--------------------------------------------------------------------------
+*/
 
-    if (
-        $remaining <= 0
-    ) {
+foreach($loans as &$loan){
+    $remaining=(float)$loan['remaining_balance'];
 
-        $loan['display_status'] =
-            'completed';
+    $dueDate=strtotime(
+        $loan['due_date']
+    );
 
-    } elseif (
-        $dueDate &&
-        $dueDate < $today
-    ) {
+    $today=strtotime(
+        date('Y-m-d')
+    );
 
-        $loan['display_status'] =
-            'overdue';
-
-    } else {
-
-        $loan['display_status'] =
-            'active';
+    if($remaining<=0){
+        $loan['display_status']='completed';
+    }elseif(
+        $dueDate&&
+        $dueDate<$today
+    ){
+        $loan['display_status']='overdue';
+    }else{
+        $loan['display_status']='active';
     }
 }
 
 unset($loan);
-
 
 /*
 |--------------------------------------------------------------------------
@@ -1414,83 +1023,53 @@ unset($loan);
 |--------------------------------------------------------------------------
 */
 
-if (
-    $search !== ''
-) {
+if($search!==''){
+    $loans=array_filter(
+        $loans,
+        function($loan)use($search){
+            $searchLower=
+                strtolower($search);
 
-    $loans =
-        array_filter(
-            $loans,
-            function ($loan) use ($search) {
+            $borrower=
+                strtolower(
+                    $loan['borrower_name']??''
+                );
 
-                $searchLower =
-                    strtolower(
-                        $search
-                    );
+            $reference=
+                strtolower(
+                    $loan['reference_number']??''
+                );
 
+            $account=
+                strtolower(
+                    $loan['account_name']??''
+                );
 
-                $borrower =
-                    strtolower(
-                        $loan[
-                            'borrower_name'
-                        ] ?? ''
-                    );
+            $collateral=
+                strtolower(
+                    $loan['item_name']??''
+                );
 
-
-                $reference =
-                    strtolower(
-                        $loan[
-                            'reference_number'
-                        ] ?? ''
-                    );
-
-
-                $account =
-                    strtolower(
-                        $loan[
-                            'account_name'
-                        ] ?? ''
-                    );
-
-
-                $collateral =
-                    strtolower(
-                        $loan[
-                            'item_name'
-                        ] ?? ''
-                    );
-
-
-                return
-                    strpos(
-                        $borrower,
-                        $searchLower
-                    ) !== false
-
-                    ||
-
-                    strpos(
-                        $reference,
-                        $searchLower
-                    ) !== false
-
-                    ||
-
-                    strpos(
-                        $account,
-                        $searchLower
-                    ) !== false
-
-                    ||
-
-                    strpos(
-                        $collateral,
-                        $searchLower
-                    ) !== false;
-            }
-        );
+            return
+                strpos(
+                    $borrower,
+                    $searchLower
+                )!==false||
+                strpos(
+                    $reference,
+                    $searchLower
+                )!==false||
+                strpos(
+                    $account,
+                    $searchLower
+                )!==false||
+                strpos(
+                    $collateral,
+                    $searchLower
+                )!==false;
+        }
+    );
 }
-
 
 /*
 |--------------------------------------------------------------------------
@@ -1498,32 +1077,22 @@ if (
 |--------------------------------------------------------------------------
 */
 
-if (
-    in_array(
-        $statusFilter,
-        [
-            'active',
-            'overdue',
-            'completed'
-        ],
-        true
-    )
-) {
-
-    $loans =
-        array_filter(
-            $loans,
-            function ($loan) use ($statusFilter) {
-
-                return
-                    $loan[
-                        'display_status'
-                    ] ===
-                    $statusFilter;
-            }
-        );
+if(in_array(
+    $statusFilter,
+    [
+        'active',
+        'overdue',
+        'completed'
+    ],
+    true
+)){
+    $loans=array_filter(
+        $loans,
+        fn($loan)=>
+            $loan['display_status']===
+            $statusFilter
+    );
 }
-
 
 /*
 |--------------------------------------------------------------------------
@@ -1533,97 +1102,54 @@ if (
 
 usort(
     $loans,
-    function (
-        $a,
-        $b
-    ) use ($sort) {
+    function($a,$b)use($sort){
+        switch($sort){
+            case'oldest':
+                return strtotime(
+                    $a['created_at']
+                )<=>
+                strtotime(
+                    $b['created_at']
+                );
 
-        switch ($sort) {
-
-            case 'oldest':
-
+            case'amount_asc':
                 return
-                    strtotime(
-                        $a['created_at']
-                    )
+                    (float)$a['principal_amount']
                     <=>
-                    strtotime(
-                        $b['created_at']
-                    );
+                    (float)$b['principal_amount'];
 
-
-            case 'amount_asc':
-
+            case'amount_desc':
                 return
-                    floatval(
-                        $a[
-                            'principal_amount'
-                        ]
-                    )
+                    (float)$b['principal_amount']
                     <=>
-                    floatval(
-                        $b[
-                            'principal_amount'
-                        ]
-                    );
+                    (float)$a['principal_amount'];
 
+            case'due_asc':
+                return strtotime(
+                    $a['due_date']
+                )<=>
+                strtotime(
+                    $b['due_date']
+                );
 
-            case 'amount_desc':
-
-                return
-                    floatval(
-                        $b[
-                            'principal_amount'
-                        ]
-                    )
-                    <=>
-                    floatval(
-                        $a[
-                            'principal_amount'
-                        ]
-                    );
-
-
-            case 'due_asc':
-
-                return
-                    strtotime(
-                        $a['due_date']
-                    )
-                    <=>
-                    strtotime(
-                        $b['due_date']
-                    );
-
-
-            case 'due_desc':
-
-                return
-                    strtotime(
-                        $b['due_date']
-                    )
-                    <=>
-                    strtotime(
-                        $a['due_date']
-                    );
-
-
-            case 'newest':
+            case'due_desc':
+                return strtotime(
+                    $b['due_date']
+                )<=>
+                strtotime(
+                    $a['due_date']
+                );
 
             default:
-
-                return
-                    strtotime(
-                        $b['created_at']
-                    )
-                    <=>
-                    strtotime(
-                        $a['created_at']
-                    );
+                return strtotime(
+                    $b['created_at']
+                )<=>
+                strtotime(
+                    $a['created_at']
+                );
         }
     }
 );
-
 
 /*
 |--------------------------------------------------------------------------
@@ -1631,519 +1157,292 @@ usort(
 |--------------------------------------------------------------------------
 */
 
-$totalLoans =
-    count($loans);
+$totalLoans=count($loans);
 
-$activeLoans =
-    0;
+$activeLoans=0;
+$overdueLoans=0;
+$completedLoans=0;
 
-$overdueLoans =
-    0;
+$totalPrincipal=0;
+$totalRemaining=0;
+$totalPaid=0;
 
-$completedLoans =
-    0;
+foreach($loans as $loan){
+    $totalPrincipal+=
+        (float)$loan['principal_amount'];
 
-$totalPrincipal =
-    0;
-
-$totalRemaining =
-    0;
-
-$totalPaid =
-    0;
-
-
-foreach (
-    $loans
-    as $loan
-) {
-
-    $totalPrincipal +=
-        floatval(
-            $loan[
-                'principal_amount'
-            ]
-        );
-
-
-    $totalRemaining +=
+    $totalRemaining+=
         max(
             0,
-            floatval(
-                $loan[
-                    'remaining_balance'
-                ]
-            )
+            (float)$loan['remaining_balance']
         );
 
+    $totalPaid+=
+        (float)$loan['total_paid'];
 
-    $totalPaid +=
-        floatval(
-            $loan[
-                'total_paid'
-            ]
-        );
-
-
-    if (
-        $loan[
-            'display_status'
-        ] ===
+    if(
+        $loan['display_status']===
         'active'
-    ) {
-
+    ){
         $activeLoans++;
-
-    } elseif (
-        $loan[
-            'display_status'
-        ] ===
+    }elseif(
+        $loan['display_status']===
         'overdue'
-    ) {
-
+    ){
         $overdueLoans++;
-
-    } elseif (
-        $loan[
-            'display_status'
-        ] ===
+    }elseif(
+        $loan['display_status']===
         'completed'
-    ) {
-
+    ){
         $completedLoans++;
     }
 }
 
-
 /*
 |--------------------------------------------------------------------------
-| FETCH BORROWERS
+| BORROWERS
 |--------------------------------------------------------------------------
+|
+| IMPORTANT:
+| This assumes loan_borrowers.created_by exists.
+|
 */
 
-$borrowersStmt =
-    $pdo->prepare("
-        SELECT
-            id,
-            first_name,
-            last_name
-        FROM loan_borrowers
-        WHERE business_id = ?
-        ORDER BY first_name ASC
-    ");
-
+$borrowersStmt=$pdo->prepare("
+    SELECT
+        id,
+        first_name,
+        last_name
+    FROM loan_borrowers
+    WHERE business_id=?
+    AND created_by=?
+    ORDER BY first_name ASC
+");
 
 $borrowersStmt->execute([
-    $businessId
+    $businessId,
+    $userId
 ]);
 
-
-$borrowers =
-    $borrowersStmt->fetchAll(
-        PDO::FETCH_ASSOC
-    );
-
+$borrowers=$borrowersStmt->fetchAll(
+    PDO::FETCH_ASSOC
+);
 
 /*
 |--------------------------------------------------------------------------
-| FETCH ACCOUNTS
+| ACCOUNTS
 |--------------------------------------------------------------------------
 */
 
-$accountsStmt =
-    $pdo->prepare("
-        SELECT
-            id,
-            account_name,
-            balance
-        FROM loan_accounts
-        WHERE business_id = ?
-        ORDER BY account_name ASC
-    ");
-
+$accountsStmt=$pdo->prepare("
+    SELECT
+        id,
+        account_name,
+        balance
+    FROM loan_accounts
+    WHERE business_id=?
+    ORDER BY account_name ASC
+");
 
 $accountsStmt->execute([
     $businessId
 ]);
 
-
-$accounts =
-    $accountsStmt->fetchAll(
-        PDO::FETCH_ASSOC
-    );
-
+$accounts=$accountsStmt->fetchAll(
+    PDO::FETCH_ASSOC
+);
 ?>
 
 <!DOCTYPE html>
-
 <html lang="en">
-
 <head>
-
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title><?=htmlspecialchars($pageTitle)?></title>
 
-<meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
->
-
-<title>
-    <?= htmlspecialchars($pageTitle) ?>
-</title>
-
-
-<link
-    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-    rel="stylesheet"
->
-
-
-<link
-    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"
-    rel="stylesheet"
->
-
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
 
 <script>
-
-(function () {
-
-    const savedTheme =
-        localStorage.getItem('bs-theme') ||
-        'light';
+(function(){
+    const savedTheme=
+        localStorage.getItem('bs-theme')||'light';
 
     document.documentElement.setAttribute(
         'data-bs-theme',
         savedTheme
     );
-
 })();
-
 </script>
 
-
 <style>
-
-body {
-    font-size: 0.9rem;
-}
-
-.loan-stat {
-    border: 0;
-    border-radius: 14px;
-    transition: transform .15s ease;
-}
-
-.loan-stat:hover {
-    transform: translateY(-2px);
-}
-
-.loan-table th {
-    font-size: .7rem;
-    letter-spacing: .04em;
-    white-space: nowrap;
-}
-
-.loan-table td {
-    vertical-align: middle;
-}
-
-.status-badge {
-    font-size: .68rem;
-    font-weight: 700;
-    padding: 5px 8px;
-    border-radius: 6px;
-}
-
-.loan-card {
-    border: 0;
-    border-radius: 14px;
-}
-
-.money-box {
-    border-radius: 10px;
-}
-
-.filter-card {
-    border: 0;
-    border-radius: 14px;
-}
-
-.table-action-btn {
-    min-width: 32px;
-}
-
+body{font-size:.9rem}
+.loan-stat{border:0;border-radius:14px;transition:transform .15s ease}
+.loan-stat:hover{transform:translateY(-2px)}
+.loan-table th{font-size:.7rem;letter-spacing:.04em;white-space:nowrap}
+.loan-table td{vertical-align:middle}
+.status-badge{font-size:.68rem;font-weight:700;padding:5px 8px;border-radius:6px}
+.loan-card{border:0;border-radius:14px}
+.money-box{border-radius:10px}
+.filter-card{border:0;border-radius:14px}
+.table-action-btn{min-width:32px}
+.installment-option{position:relative;cursor:pointer;transition:all .15s ease}
+.installment-option:hover{transform:translateY(-1px)}
+.installment-option input{position:absolute;opacity:0;pointer-events:none}
+.installment-box{border:1px solid var(--bs-border-color);border-radius:12px;padding:12px;transition:all .15s ease;background:var(--bs-body-bg)}
+.installment-option input:checked+.installment-box{border-color:var(--bs-success);background:rgba(var(--bs-success-rgb),.08);box-shadow:0 0 0 2px rgba(var(--bs-success-rgb),.1)}
+.installment-circle{width:22px;height:22px;min-width:22px;border:2px solid var(--bs-secondary-color);border-radius:50%;display:flex;align-items:center;justify-content:center;transition:all .15s ease}
+.installment-option input:checked+.installment-box .installment-circle{border-color:var(--bs-success);background:var(--bs-success)}
+.installment-circle i{color:#fff;font-size:13px;display:none}
+.installment-option input:checked+.installment-box .installment-circle i{display:block}
+.installment-paid{opacity:.65;cursor:not-allowed}
 </style>
-
 </head>
 
+<body class="bg-body-tertiary" style="min-height:100vh">
 
-<body
-    class="bg-body-tertiary"
-    style="min-height:100vh;"
->
+<div class="d-flex flex-column flex-lg-row" style="min-height:100vh">
 
+<?php include __DIR__.'/../../../resources/partials/loansidebar.php'; ?>
 
-<div
-    class="d-flex flex-column flex-lg-row"
-    style="min-height:100vh;"
->
+<div class="p-3 p-md-4 flex-grow-1 bg-body-tertiary overflow-hidden">
 
-
-<?php
-
-include __DIR__ .
-    '/../../../resources/partials/loansidebar.php';
-
-?>
-
-
-<div
-    class="p-3 p-md-4 flex-grow-1 bg-body-tertiary overflow-hidden"
->
-
-
-<!-- HEADER -->
-
-<div
-    class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4"
->
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
 
 <div>
-
-<h2 class="fw-bold text-body mb-1">
-    Loans
-</h2>
+<h2 class="fw-bold text-body mb-1">Loans</h2>
 
 <p class="text-muted small mb-0">
-
 Manage loans, payments and schedules for
-
 <span class="fw-bold text-primary">
-
-<?= htmlspecialchars(
-    $_SESSION['business_name'] ?? ''
-) ?>
-
+<?=htmlspecialchars($_SESSION['business_name']??'')?>
 </span>
-
 </p>
-
 </div>
 
-
 <button
-    type="button"
-    class="btn btn-primary fw-bold px-3 py-2 rounded-3 shadow-sm"
-    data-bs-toggle="modal"
-    data-bs-target="#issueLoanModal"
->
-
+type="button"
+class="btn btn-primary fw-bold px-3 py-2 rounded-3 shadow-sm"
+data-bs-toggle="modal"
+data-bs-target="#issueLoanModal">
 <i class="bi bi-plus-circle-fill me-1"></i>
-
 Issue New Loan
-
 </button>
 
 </div>
 
-
-<!-- ALERTS -->
-
-<?php if (!empty($success)): ?>
+<?php if(!empty($success)): ?>
 
 <div class="alert alert-success border-0 shadow-sm py-2 small">
-
 <i class="bi bi-check-circle-fill me-1"></i>
-
-<?= htmlspecialchars($success) ?>
-
+<?=htmlspecialchars($success)?>
 </div>
 
 <?php endif; ?>
 
-
-<?php if (!empty($error)): ?>
+<?php if(!empty($error)): ?>
 
 <div class="alert alert-danger border-0 shadow-sm py-2 small">
-
 <i class="bi bi-exclamation-circle-fill me-1"></i>
-
-<?= htmlspecialchars($error) ?>
-
+<?=htmlspecialchars($error)?>
 </div>
 
 <?php endif; ?>
-
-
-<!-- SUMMARY -->
 
 <div class="row g-3 mb-4">
 
-
 <div class="col-6 col-xl-3">
-
 <div class="card loan-stat shadow-sm bg-body h-100">
-
 <div class="card-body p-3">
-
 <div class="d-flex justify-content-between align-items-center">
 
 <div>
-
-<div class="text-muted small mb-1">
-Total Loans
-</div>
-
+<div class="text-muted small mb-1">Total Loans</div>
 <div class="fs-5 fw-bold">
-<?= number_format($totalLoans) ?>
+<?=number_format($totalLoans)?>
+</div>
 </div>
 
-</div>
-
-<div class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center"
-style="width:38px;height:38px;">
-
+<div class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center" style="width:38px;height:38px">
 <i class="bi bi-file-earmark-text"></i>
-
 </div>
 
 </div>
-
 </div>
-
 </div>
-
 </div>
-
 
 <div class="col-6 col-xl-3">
-
 <div class="card loan-stat shadow-sm bg-body h-100">
-
 <div class="card-body p-3">
-
 <div class="d-flex justify-content-between align-items-center">
 
 <div>
-
-<div class="text-muted small mb-1">
-Active
-</div>
-
+<div class="text-muted small mb-1">Active</div>
 <div class="fs-5 fw-bold text-success">
-<?= number_format($activeLoans) ?>
+<?=number_format($activeLoans)?>
+</div>
 </div>
 
-</div>
-
-<div class="rounded-circle bg-success bg-opacity-10 text-success d-flex align-items-center justify-content-center"
-style="width:38px;height:38px;">
-
+<div class="rounded-circle bg-success bg-opacity-10 text-success d-flex align-items-center justify-content-center" style="width:38px;height:38px">
 <i class="bi bi-clock"></i>
-
 </div>
 
 </div>
-
 </div>
-
 </div>
-
 </div>
-
 
 <div class="col-6 col-xl-3">
-
 <div class="card loan-stat shadow-sm bg-body h-100">
-
 <div class="card-body p-3">
-
 <div class="d-flex justify-content-between align-items-center">
 
 <div>
-
-<div class="text-muted small mb-1">
-Overdue
-</div>
-
+<div class="text-muted small mb-1">Overdue</div>
 <div class="fs-5 fw-bold text-danger">
-<?= number_format($overdueLoans) ?>
+<?=number_format($overdueLoans)?>
+</div>
 </div>
 
-</div>
-
-<div class="rounded-circle bg-danger bg-opacity-10 text-danger d-flex align-items-center justify-content-center"
-style="width:38px;height:38px;">
-
+<div class="rounded-circle bg-danger bg-opacity-10 text-danger d-flex align-items-center justify-content-center" style="width:38px;height:38px">
 <i class="bi bi-exclamation-triangle"></i>
-
 </div>
 
 </div>
-
 </div>
-
 </div>
-
 </div>
-
 
 <div class="col-6 col-xl-3">
-
 <div class="card loan-stat shadow-sm bg-body h-100">
-
 <div class="card-body p-3">
-
 <div class="d-flex justify-content-between align-items-center">
 
 <div>
-
-<div class="text-muted small mb-1">
-Remaining
-</div>
-
+<div class="text-muted small mb-1">Remaining</div>
 <div class="fs-5 fw-bold text-primary">
-₱<?= number_format($totalRemaining, 2) ?>
+₱<?=number_format($totalRemaining,2)?>
+</div>
 </div>
 
-</div>
-
-<div class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center"
-style="width:38px;height:38px;">
-
+<div class="rounded-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center" style="width:38px;height:38px">
 <i class="bi bi-cash-stack"></i>
-
 </div>
 
 </div>
-
+</div>
+</div>
 </div>
 
 </div>
-
-</div>
-
-</div>
-
-
-<!-- SEARCH -->
 
 <div class="card filter-card shadow-sm bg-body mb-4">
-
 <div class="card-body p-3">
 
-<form
-    method="GET"
-    class="row g-2 align-items-end"
->
+<form method="GET" class="row g-2 align-items-end">
 
-<input
-    type="hidden"
-    name="page"
-    value="loans"
->
-
+<input type="hidden" name="page" value="loans">
 
 <div class="col-12 col-md-5">
 
@@ -2158,17 +1457,14 @@ Search
 </span>
 
 <input
-    type="text"
-    name="search"
-    value="<?= htmlspecialchars($search) ?>"
-    class="form-control border-start-0 shadow-none"
-    placeholder="Borrower, reference, account..."
->
+type="text"
+name="search"
+value="<?=htmlspecialchars($search)?>"
+class="form-control border-start-0 shadow-none"
+placeholder="Borrower, reference, account...">
 
 </div>
-
 </div>
-
 
 <div class="col-6 col-md-3">
 
@@ -2176,33 +1472,19 @@ Search
 Status
 </label>
 
-<select
-    name="status"
-    class="form-select shadow-none"
->
+<select name="status" class="form-select shadow-none">
 
-<option value="all">
-All Status
-</option>
+<option value="all">All Status</option>
 
-<option
-    value="active"
-    <?= $statusFilter === 'active' ? 'selected' : '' ?>
->
+<option value="active" <?=$statusFilter==='active'?'selected':''?>>
 Active
 </option>
 
-<option
-    value="overdue"
-    <?= $statusFilter === 'overdue' ? 'selected' : '' ?>
->
+<option value="overdue" <?=$statusFilter==='overdue'?'selected':''?>>
 Overdue
 </option>
 
-<option
-    value="completed"
-    <?= $statusFilter === 'completed' ? 'selected' : '' ?>
->
+<option value="completed" <?=$statusFilter==='completed'?'selected':''?>>
 Paid / Completed
 </option>
 
@@ -2210,39 +1492,35 @@ Paid / Completed
 
 </div>
 
-
 <div class="col-6 col-md-3">
 
 <label class="form-label small fw-semibold text-muted mb-1">
 Sort
 </label>
 
-<select
-    name="sort"
-    class="form-select shadow-none"
->
+<select name="sort" class="form-select shadow-none">
 
-<option value="newest">
+<option value="newest" <?=$sort==='newest'?'selected':''?>>
 Newest First
 </option>
 
-<option value="oldest">
+<option value="oldest" <?=$sort==='oldest'?'selected':''?>>
 Oldest First
 </option>
 
-<option value="amount_desc">
+<option value="amount_desc" <?=$sort==='amount_desc'?'selected':''?>>
 Amount: High to Low
 </option>
 
-<option value="amount_asc">
+<option value="amount_asc" <?=$sort==='amount_asc'?'selected':''?>>
 Amount: Low to High
 </option>
 
-<option value="due_asc">
+<option value="due_asc" <?=$sort==='due_asc'?'selected':''?>>
 Due Date: Earliest
 </option>
 
-<option value="due_desc">
+<option value="due_desc" <?=$sort==='due_desc'?'selected':''?>>
 Due Date: Latest
 </option>
 
@@ -2250,28 +1528,16 @@ Due Date: Latest
 
 </div>
 
-
 <div class="col-12 col-md-1">
-
-<button
-    type="submit"
-    class="btn btn-primary w-100"
->
-
+<button type="submit" class="btn btn-primary w-100">
 <i class="bi bi-funnel"></i>
-
 </button>
-
 </div>
 
 </form>
 
 </div>
-
 </div>
-
-
-<!-- DESKTOP TABLE -->
 
 <div class="d-none d-md-block card border-0 shadow-sm rounded-4 overflow-hidden">
 
@@ -2282,58 +1548,25 @@ Due Date: Latest
 <thead class="table-light">
 
 <tr>
-
-<th class="ps-4 py-3">
-Reference
-</th>
-
-<th>
-Borrower
-</th>
-
-<th>
-Principal
-</th>
-
-<th>
-Payment
-</th>
-
-<th>
-Remaining
-</th>
-
-<th>
-Frequency
-</th>
-
-<th>
-Due Date
-</th>
-
-<th>
-Status
-</th>
-
-<th class="text-end pe-4">
-Action
-</th>
-
+<th class="ps-4 py-3">Reference</th>
+<th>Borrower</th>
+<th>Principal</th>
+<th>Payment</th>
+<th>Remaining</th>
+<th>Frequency</th>
+<th>Due Date</th>
+<th>Status</th>
+<th class="text-end pe-4">Action</th>
 </tr>
 
 </thead>
 
-
 <tbody>
 
-<?php if (empty($loans)): ?>
+<?php if(empty($loans)): ?>
 
 <tr>
-
-<td
-    colspan="9"
-    class="text-center py-5 text-muted"
->
+<td colspan="9" class="text-center py-5 text-muted">
 
 <i class="bi bi-search display-6 opacity-50"></i>
 
@@ -2342,250 +1575,166 @@ No loans found
 </div>
 
 </td>
-
 </tr>
 
 <?php else: ?>
 
+<?php foreach($loans as $loan):
 
-<?php foreach ($loans as $loan): ?>
+$status=$loan['display_status'];
+$isCompleted=$status==='completed';
+$isOverdue=$status==='overdue';
 
-
-<?php
-
-$status =
-    $loan['display_status'];
-
-$isCompleted =
-    $status === 'completed';
-
-$isOverdue =
-    $status === 'overdue';
-
-
-if ($isCompleted) {
-
-    $statusClass =
-        'success';
-
-    $statusText =
-        'Paid';
-
-} elseif ($isOverdue) {
-
-    $statusClass =
-        'danger';
-
-    $statusText =
-        'Overdue';
-
-} else {
-
-    $statusClass =
-        'primary';
-
-    $statusText =
-        'Active';
+if($isCompleted){
+    $statusClass='success';
+    $statusText='Paid';
+}elseif($isOverdue){
+    $statusClass='danger';
+    $statusText='Overdue';
+}else{
+    $statusClass='primary';
+    $statusText='Active';
 }
 
-
-$frequencyText = [
-    'daily' =>
-        'Daily',
-    'weekly' =>
-        'Weekly',
-    'biweekly' =>
-        'Bi-weekly',
-    'monthly' =>
-        'Monthly'
+$frequencyText=[
+    'daily'=>'Daily',
+    'weekly'=>'Weekly',
+    'biweekly'=>'Bi-weekly',
+    'monthly'=>'Monthly'
 ];
 
-
-$frequency =
+$frequency=
     $frequencyText[
-        $loan['payment_frequency'] ??
-        'monthly'
-    ] ??
-    'Monthly';
+        $loan['payment_frequency']??'monthly'
+    ]??'Monthly';
 
 ?>
 
-
 <tr>
-
 
 <td class="ps-4">
 
 <div class="fw-semibold">
-
-<?= htmlspecialchars(
-    $loan['reference_number']
-    ?: '—'
-) ?>
-
+<?=htmlspecialchars(
+    $loan['reference_number']?:'—'
+)?>
 </div>
 
-<div class="text-muted"
-style="font-size:.68rem;">
-
-#<?= (int)$loan['id'] ?>
-
+<div class="text-muted" style="font-size:.68rem">
+#<?= (int)$loan['id']?>
 </div>
 
 </td>
-
 
 <td>
 
 <div class="fw-bold">
-
-<?= htmlspecialchars(
+<?=htmlspecialchars(
     $loan['borrower_name']
-) ?>
-
+)?>
 </div>
 
-<div class="text-muted"
-style="font-size:.7rem;">
-
-<?= htmlspecialchars(
+<div class="text-muted" style="font-size:.7rem">
+<?=htmlspecialchars(
     $loan['account_name']
-) ?>
-
+)?>
 </div>
 
 </td>
-
 
 <td>
 
 <div class="fw-semibold">
-
-₱<?= number_format(
+₱<?=number_format(
     $loan['principal_amount'],
     2
-) ?>
-
+)?>
 </div>
 
-<div class="text-muted"
-style="font-size:.68rem;">
-
-Total:
-₱<?= number_format(
+<div class="text-muted" style="font-size:.68rem">
+Total: ₱<?=number_format(
     $loan['total_payable'],
     2
-) ?>
-
+)?>
 </div>
 
 </td>
-
 
 <td>
 
 <div class="fw-bold text-primary">
-
-₱<?= number_format(
-    $loan['fixed_payment_amount'] ?? 0,
+₱<?=number_format(
+    $loan['fixed_payment_amount']??0,
     2
-) ?>
-
+)?>
 </div>
 
-<div class="text-muted"
-style="font-size:.68rem;">
-
-<?= htmlspecialchars($frequency) ?>
-
+<div class="text-muted" style="font-size:.68rem">
+<?=htmlspecialchars($frequency)?>
 </div>
 
 </td>
 
-
 <td>
 
 <div class="fw-bold text-success">
-
-₱<?= number_format(
+₱<?=number_format(
     max(
         0,
         $loan['remaining_balance']
     ),
     2
-) ?>
-
+)?>
 </div>
 
-<div class="text-muted"
-style="font-size:.68rem;">
-
-Paid:
-₱<?= number_format(
+<div class="text-muted" style="font-size:.68rem">
+Paid: ₱<?=number_format(
     $loan['total_paid'],
     2
-) ?>
-
+)?>
 </div>
 
 </td>
-
 
 <td>
 
 <span class="badge bg-primary bg-opacity-10 text-primary">
-
-<?= htmlspecialchars(
-    $frequency
-) ?>
-
+<?=htmlspecialchars($frequency)?>
 </span>
 
 </td>
 
-
 <td>
 
-<div class="<?= $isOverdue ? 'text-danger fw-bold' : '' ?>">
-
-<?= date(
+<div class="<?=$isOverdue?'text-danger fw-bold':''?>">
+<?=date(
     'M d, Y',
-    strtotime(
-        $loan['due_date']
-    )
-) ?>
-
+    strtotime($loan['due_date'])
+)?>
 </div>
 
 </td>
 
-
 <td>
 
-<span
-    class="status-badge bg-<?= $statusClass ?> bg-opacity-10 text-<?= $statusClass ?>"
->
-
-<?= $statusText ?>
-
+<span class="status-badge bg-<?=$statusClass?> bg-opacity-10 text-<?=$statusClass?>">
+<?=$statusText?>
 </span>
 
 </td>
-
 
 <td class="text-end pe-4">
 
 <div class="d-flex justify-content-end gap-1">
 
-<?php if (!$isCompleted): ?>
+<?php if(!$isCompleted): ?>
 
 <button
-    type="button"
-    class="btn btn-sm btn-success"
-    title="Record Payment"
-    data-bs-toggle="modal"
-    data-bs-target="#paymentModal<?= $loan['id'] ?>"
->
+type="button"
+class="btn btn-sm btn-success"
+title="Record Payment"
+data-bs-toggle="modal"
+data-bs-target="#paymentModal<?=$loan['id']?>">
 
 <i class="bi bi-cash-stack"></i>
 
@@ -2593,12 +1742,10 @@ Paid:
 
 <?php endif; ?>
 
-
 <a
-    href="index.php?page=loan_details&id=<?= (int)$loan['id'] ?>"
-    class="btn btn-sm btn-light border"
-    title="View Details"
->
+href="index.php?page=loan_details&id=<?=(int)$loan['id']?>"
+class="btn btn-sm btn-light border"
+title="View Details">
 
 <i class="bi bi-eye"></i>
 
@@ -2610,25 +1757,19 @@ Paid:
 
 </tr>
 
-
 <?php endforeach; ?>
 
 <?php endif; ?>
 
 </tbody>
-
 </table>
 
 </div>
-
 </div>
-
-
-<!-- MOBILE -->
 
 <div class="d-block d-md-none">
 
-<?php if (empty($loans)): ?>
+<?php if(empty($loans)): ?>
 
 <div class="card shadow-sm border-0 rounded-4 text-center py-5">
 
@@ -2642,327 +1783,505 @@ No loans found
 
 <?php else: ?>
 
-
 <div class="d-flex flex-column gap-3">
 
-<?php foreach ($loans as $loan): ?>
+<?php foreach($loans as $loan):
 
+$status=$loan['display_status'];
+$isCompleted=$status==='completed';
+$isOverdue=$status==='overdue';
 
-<?php
-
-$status =
-    $loan['display_status'];
-
-$isCompleted =
-    $status === 'completed';
-
-$isOverdue =
-    $status === 'overdue';
-
-
-if ($isCompleted) {
-
-    $statusClass =
-        'success';
-
-    $statusText =
-        'Paid';
-
-} elseif ($isOverdue) {
-
-    $statusClass =
-        'danger';
-
-    $statusText =
-        'Overdue';
-
-} else {
-
-    $statusClass =
-        'primary';
-
-    $statusText =
-        'Active';
+if($isCompleted){
+    $statusClass='success';
+    $statusText='Paid';
+}elseif($isOverdue){
+    $statusClass='danger';
+    $statusText='Overdue';
+}else{
+    $statusClass='primary';
+    $statusText='Active';
 }
 
-
-$frequencyText = [
-    'daily' =>
-        'Daily',
-    'weekly' =>
-        'Weekly',
-    'biweekly' =>
-        'Bi-weekly',
-    'monthly' =>
-        'Monthly'
+$frequencyText=[
+    'daily'=>'Daily',
+    'weekly'=>'Weekly',
+    'biweekly'=>'Bi-weekly',
+    'monthly'=>'Monthly'
 ];
 
-
-$frequency =
+$frequency=
     $frequencyText[
-        $loan['payment_frequency'] ??
-        'monthly'
-    ] ??
-    'Monthly';
+        $loan['payment_frequency']??'monthly'
+    ]??'Monthly';
 
 ?>
-
 
 <div class="card loan-card shadow-sm bg-body">
 
 <div class="card-body p-3">
-
 
 <div class="d-flex justify-content-between mb-3">
 
 <div>
 
 <div class="small text-muted">
-
-<?= htmlspecialchars(
-    $loan['reference_number']
-    ?: 'No Reference'
-) ?>
-
+<?=htmlspecialchars(
+    $loan['reference_number']?:'No Reference'
+)?>
 </div>
 
 <h6 class="fw-bold mb-0">
-
-<?= htmlspecialchars(
+<?=htmlspecialchars(
     $loan['borrower_name']
-) ?>
-
+)?>
 </h6>
 
 </div>
 
-
-<span class="status-badge bg-<?= $statusClass ?> bg-opacity-10 text-<?= $statusClass ?>">
-
-<?= $statusText ?>
-
+<span class="status-badge bg-<?=$statusClass?> bg-opacity-10 text-<?=$statusClass?>">
+<?=$statusText?>
 </span>
 
 </div>
 
-
 <div class="row g-2 mb-3">
 
-
 <div class="col-6">
-
 <div class="money-box bg-body-tertiary p-2">
 
-<div class="text-muted"
-style="font-size:.68rem;">
-
+<div class="text-muted" style="font-size:.68rem">
 Principal
-
 </div>
 
 <div class="fw-bold">
-
-₱<?= number_format(
+₱<?=number_format(
     $loan['principal_amount'],
     2
-) ?>
-
+)?>
 </div>
 
 </div>
-
 </div>
-
 
 <div class="col-6">
-
 <div class="money-box bg-body-tertiary p-2">
 
-<div class="text-muted"
-style="font-size:.68rem;">
-
+<div class="text-muted" style="font-size:.68rem">
 Remaining
-
 </div>
 
 <div class="fw-bold text-success">
-
-₱<?= number_format(
+₱<?=number_format(
     max(
         0,
         $loan['remaining_balance']
     ),
     2
-) ?>
-
+)?>
 </div>
 
 </div>
-
 </div>
-
 
 <div class="col-6">
-
 <div class="money-box bg-primary bg-opacity-10 p-2">
 
-<div class="text-muted"
-style="font-size:.68rem;">
-
+<div class="text-muted" style="font-size:.68rem">
 Fixed Payment
-
 </div>
 
 <div class="fw-bold text-primary">
-
-₱<?= number_format(
-    $loan['fixed_payment_amount'] ?? 0,
+₱<?=number_format(
+    $loan['fixed_payment_amount']??0,
     2
-) ?>
-
+)?>
 </div>
 
 </div>
-
 </div>
-
 
 <div class="col-6">
-
 <div class="money-box bg-body-tertiary p-2">
 
-<div class="text-muted"
-style="font-size:.68rem;">
-
+<div class="text-muted" style="font-size:.68rem">
 Frequency
-
 </div>
 
 <div class="fw-bold">
-
-<?= htmlspecialchars(
-    $frequency
-) ?>
-
+<?=htmlspecialchars($frequency)?>
 </div>
 
 </div>
-
 </div>
 
 </div>
-
 
 <div class="d-flex justify-content-between small mb-2">
 
 <span class="text-muted">
-
 Paid:
-
 <strong class="text-body">
-
-₱<?= number_format(
+₱<?=number_format(
     $loan['total_paid'],
     2
-) ?>
-
+)?>
 </strong>
-
 </span>
 
-
 <span class="text-muted">
-
 Total:
-
 <strong class="text-body">
-
-₱<?= number_format(
+₱<?=number_format(
     $loan['total_payable'],
     2
-) ?>
-
+)?>
 </strong>
-
 </span>
 
 </div>
-
 
 <div class="border-top pt-2">
 
 <div class="d-flex justify-content-between small">
 
 <span class="text-muted">
-
 Issued:
-
-<?= date(
+<?=date(
     'M d, Y',
-    strtotime(
-        $loan['loan_date']
-    )
-) ?>
-
+    strtotime($loan['loan_date'])
+)?>
 </span>
 
-
-<span class="<?= $isOverdue ? 'text-danger fw-bold' : 'text-muted' ?>">
-
+<span class="<?=$isOverdue?'text-danger fw-bold':'text-muted'?>">
 Due:
-
-<?= date(
+<?=date(
     'M d, Y',
-    strtotime(
-        $loan['due_date']
-    )
-) ?>
-
+    strtotime($loan['due_date'])
+)?>
 </span>
 
 </div>
 
 </div>
-
 
 <div class="d-flex justify-content-end gap-2 mt-3">
 
-<?php if (!$isCompleted): ?>
+<?php if(!$isCompleted): ?>
 
 <button
-    type="button"
-    class="btn btn-sm btn-success fw-semibold"
-    data-bs-toggle="modal"
-    data-bs-target="#paymentModal<?= $loan['id'] ?>"
->
+type="button"
+class="btn btn-sm btn-success fw-semibold"
+data-bs-toggle="modal"
+data-bs-target="#paymentModal<?=$loan['id']?>">
 
 <i class="bi bi-cash-stack me-1"></i>
-
 Payment
 
 </button>
 
 <?php endif; ?>
 
-
 <a
-    href="index.php?page=loan_details&id=<?= (int)$loan['id'] ?>"
-    class="btn btn-sm btn-light border fw-semibold"
->
+href="index.php?page=loan_details&id=<?=(int)$loan['id']?>"
+class="btn btn-sm btn-light border fw-semibold">
 
 <i class="bi bi-eye me-1"></i>
-
 Details
 
 </a>
 
 </div>
 
+</div>
+</div>
+
+<?php endforeach; ?>
+
+</div>
+
+<?php endif; ?>
+
+</div>
+</div>
+</div>
+
+<?php foreach($loans as $loan):
+
+if($loan['display_status']==='completed'){
+    continue;
+}
+
+$loanId=(int)$loan['id'];
+
+$schedules=
+    $loanSchedules[$loanId]??[];
+
+$remainingBalance=max(
+    0,
+    (float)$loan['remaining_balance']
+);
+
+?>
+
+<div
+class="modal fade"
+id="paymentModal<?=$loanId?>"
+tabindex="-1">
+
+<div class="modal-dialog modal-dialog-centered modal-lg">
+
+<div class="modal-content border-0 shadow-lg rounded-4">
+
+<div class="modal-header">
+
+<h5 class="modal-title fw-bold">
+
+<i class="bi bi-cash-coin text-success me-2"></i>
+Record Payment
+
+</h5>
+
+<button
+type="button"
+class="btn-close"
+data-bs-dismiss="modal">
+</button>
+
+</div>
+
+<form
+method="POST"
+class="payment-form"
+data-loan-id="<?=$loanId?>"
+data-has-schedules="<?=empty($schedules)?'0':'1'?>"
+data-remaining="<?=$remainingBalance?>">
+
+<input
+type="hidden"
+name="record_payment"
+value="1">
+
+<input
+type="hidden"
+name="loan_id"
+value="<?=$loanId?>">
+
+<div class="modal-body">
+
+<div class="mb-3">
+
+<div class="small text-muted">
+Borrower
+</div>
+
+<strong>
+<?=htmlspecialchars(
+    $loan['borrower_name']
+)?>
+</strong>
+
+</div>
+
+<div class="p-3 rounded-3 bg-success bg-opacity-10 border border-success border-opacity-25 mb-3">
+
+<div class="small text-muted">
+Remaining Loan Balance
+</div>
+
+<div class="fs-4 fw-bold text-success">
+₱<?=number_format(
+    $remainingBalance,
+    2
+)?>
+</div>
+
+</div>
+
+<div class="mb-3">
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+
+<div>
+
+<label class="form-label fw-bold mb-0">
+Select Installments to Pay
+</label>
+
+<div class="text-muted small">
+You can select multiple installments for advance payment.
+</div>
+
+</div>
+
+<?php if(!empty($schedules)): ?>
+
+<button
+type="button"
+class="btn btn-sm btn-outline-primary select-all-installments"
+data-loan-id="<?=$loanId?>">
+
+Select All
+
+</button>
+
+<?php endif; ?>
+
+</div>
+
+<?php if(empty($schedules)): ?>
+
+<div class="alert alert-warning small mb-3">
+
+<i class="bi bi-exclamation-triangle me-1"></i>
+
+No payment schedule was found for this loan.
+You can enter a custom payment amount below.
+
+</div>
+
+<div class="mb-3">
+
+<label class="form-label fw-semibold small">
+Custom Payment Amount (₱)
+<span class="text-danger">*</span>
+</label>
+
+<div class="input-group">
+
+<span class="input-group-text">
+₱
+</span>
+
+<input
+type="number"
+step="0.01"
+min="0.01"
+max="<?=$remainingBalance?>"
+name="custom_payment_amount"
+class="form-control custom-payment-input"
+placeholder="0.00">
+
+</div>
+
+<div class="form-text">
+Maximum payable amount is
+₱<?=number_format(
+    $remainingBalance,
+    2
+)?>
+</div>
+
+</div>
+
+<?php else: ?>
+
+<div
+class="d-flex flex-column gap-2"
+id="scheduleList<?=$loanId?>">
+
+<?php foreach($schedules as $index=>$schedule):
+
+$scheduleId=(int)$schedule['id'];
+
+$scheduleStatus=
+    $schedule['status']??'unpaid';
+
+$amountDue=round(
+    (float)$schedule['amount_due'],
+    2
+);
+
+$isPaid=$scheduleStatus==='paid';
+
+$isPartiallyPaid=
+    $scheduleStatus==='partially_paid';
+
+$statusLabel=
+    $isPaid
+    ?'Paid'
+    :(
+        $isPartiallyPaid
+        ?'Partially Paid'
+        :'Unpaid'
+    );
+
+$statusClass=
+    $isPaid
+    ?'success'
+    :(
+        $isPartiallyPaid
+        ?'warning'
+        :'primary'
+    );
+
+?>
+
+<label
+class="installment-option <?=$isPaid?'installment-paid':''?>">
+
+<input
+type="checkbox"
+name="schedule_ids[]"
+value="<?=$scheduleId?>"
+data-amount="<?=number_format(
+    $amountDue,
+    2,
+    '.',
+    ''
+)?>"
+<?=$isPaid?'disabled':''?>>
+
+<div class="installment-box">
+
+<div class="d-flex align-items-center gap-3">
+
+<div class="installment-circle">
+<i class="bi bi-check"></i>
+</div>
+
+<div class="flex-grow-1">
+
+<div class="d-flex justify-content-between align-items-center">
+
+<div>
+
+<div class="fw-bold">
+Installment <?=$index+1?>
+</div>
+
+<div class="small text-muted">
+Due:
+<?=date(
+    'M d, Y',
+    strtotime($schedule['due_date'])
+)?>
+</div>
+
+</div>
+
+<div class="text-end">
+
+<div class="fw-bold">
+₱<?=number_format(
+    $amountDue,
+    2
+)?>
+</div>
+
+<span class="badge bg-<?=$statusClass?> bg-opacity-10 text-<?=$statusClass?>">
+<?=$statusLabel?>
+</span>
 
 </div>
 
 </div>
 
+</div>
+</div>
+
+</div>
+
+</label>
 
 <?php endforeach; ?>
 
@@ -2972,154 +2291,43 @@ Details
 
 </div>
 
+<?php if(!empty($schedules)): ?>
+
+<div class="p-3 rounded-3 bg-primary bg-opacity-10 border border-primary border-opacity-25 mb-3">
+
+<div class="d-flex justify-content-between align-items-center">
+
+<div>
+
+<div class="small text-muted">
+Selected Installments
+</div>
+
+<div class="fw-bold" id="selectedCount<?=$loanId?>">
+0 installments
 </div>
 
 </div>
 
+<div class="text-end">
 
-<!-- PAYMENT MODALS -->
-
-<?php foreach ($loans as $loan): ?>
-
-<?php
-
-if (
-    $loan['display_status'] ===
-    'completed'
-) {
-    continue;
-}
-
-?>
-
+<div class="small text-muted">
+Payment Amount
+</div>
 
 <div
-    class="modal fade"
-    id="paymentModal<?= $loan['id'] ?>"
-    tabindex="-1"
->
-
-<div class="modal-dialog modal-dialog-centered">
-
-<div class="modal-content border-0 shadow-lg rounded-4">
-
-
-<div class="modal-header">
-
-<h5 class="modal-title fw-bold">
-
-<i class="bi bi-cash-coin text-success me-2"></i>
-
-Record Payment
-
-</h5>
-
-<button
-    type="button"
-    class="btn-close"
-    data-bs-dismiss="modal"
-></button>
-
+class="fs-4 fw-bold text-primary"
+id="selectedTotal<?=$loanId?>">
+₱0.00
 </div>
 
-
-<form method="POST">
-
-<input
-    type="hidden"
-    name="record_payment"
-    value="1"
->
-
-
-<input
-    type="hidden"
-    name="loan_id"
-    value="<?= (int)$loan['id'] ?>"
->
-
-
-<div class="modal-body">
-
-
-<div class="mb-3">
-
-<div class="small text-muted">
-Borrower
 </div>
-
-<strong>
-
-<?= htmlspecialchars(
-    $loan['borrower_name']
-) ?>
-
-</strong>
-
-</div>
-
-
-<div class="p-3 rounded-3 bg-success bg-opacity-10 border border-success border-opacity-25 mb-3">
-
-<div class="small text-muted">
-Remaining Balance
-</div>
-
-<div class="fs-4 fw-bold text-success">
-
-₱<?= number_format(
-    max(
-        0,
-        $loan['remaining_balance']
-    ),
-    2
-) ?>
 
 </div>
 
 </div>
 
-
-<div class="mb-3">
-
-<label class="form-label fw-semibold small">
-
-Payment Amount
-
-</label>
-
-<input
-    type="number"
-    step="0.01"
-    min="0.01"
-    max="<?= max(
-        0,
-        floatval(
-            $loan['remaining_balance']
-        )
-    ) ?>"
-    name="payment_amount"
-    class="form-control"
-    required
->
-
-
-<div class="form-text">
-
-Fixed scheduled payment:
-<strong>
-
-₱<?= number_format(
-    $loan['fixed_payment_amount'] ?? 0,
-    2
-) ?>
-
-</strong>
-
-</div>
-
-</div>
-
+<?php endif; ?>
 
 <div class="mb-3">
 
@@ -3128,15 +2336,13 @@ Payment Date
 </label>
 
 <input
-    type="date"
-    name="payment_date"
-    class="form-control"
-    value="<?= date('Y-m-d') ?>"
-    required
->
+type="date"
+name="payment_date"
+class="form-control"
+value="<?=date('Y-m-d')?>"
+required>
 
 </div>
-
 
 <div>
 
@@ -3145,36 +2351,30 @@ Notes / Remarks
 </label>
 
 <textarea
-    name="payment_notes"
-    class="form-control"
-    rows="2"
-></textarea>
+name="payment_notes"
+class="form-control"
+rows="2"
+placeholder="Optional payment remarks..."></textarea>
 
 </div>
 
 </div>
-
 
 <div class="modal-footer">
 
 <button
-    type="button"
-    class="btn btn-light"
-    data-bs-dismiss="modal"
->
-
+type="button"
+class="btn btn-light"
+data-bs-dismiss="modal">
 Cancel
-
 </button>
 
-
 <button
-    type="submit"
-    class="btn btn-success fw-bold"
->
+type="submit"
+class="btn btn-success fw-bold save-payment-btn"
+<?=empty($schedules)?'':'disabled'?>>
 
 <i class="bi bi-check-circle me-1"></i>
-
 Save Payment
 
 </button>
@@ -3184,99 +2384,75 @@ Save Payment
 </form>
 
 </div>
-
 </div>
-
 </div>
-
 
 <?php endforeach; ?>
-
 
 <!-- ISSUE LOAN MODAL -->
 
 <div
-    class="modal fade"
-    id="issueLoanModal"
-    tabindex="-1"
->
+class="modal fade"
+id="issueLoanModal"
+tabindex="-1">
 
 <div class="modal-dialog modal-dialog-centered modal-lg">
 
 <div class="modal-content border-0 shadow-lg rounded-4">
-
 
 <div class="modal-header">
 
 <h5 class="modal-title fw-bold">
 
 <i class="bi bi-file-earmark-plus-fill text-primary me-2"></i>
-
 Issue New Loan
 
 </h5>
 
 <button
-    type="button"
-    class="btn-close"
-    data-bs-dismiss="modal"
-></button>
+type="button"
+class="btn-close"
+data-bs-dismiss="modal">
+</button>
 
 </div>
 
-
 <form
-    method="POST"
-    enctype="multipart/form-data"
->
+method="POST"
+enctype="multipart/form-data">
 
 <input
-    type="hidden"
-    name="issue_loan"
-    value="1"
->
-
+type="hidden"
+name="issue_loan"
+value="1">
 
 <div class="modal-body">
 
-
-<!-- BORROWER / ACCOUNT -->
-
 <div class="row">
-
 
 <div class="col-md-6 mb-3">
 
 <label class="form-label fw-semibold small">
-
 Borrower
 <span class="text-danger">*</span>
-
 </label>
 
-
 <select
-    name="borrower_id"
-    class="form-select"
-    required
->
+name="borrower_id"
+class="form-select"
+required>
 
 <option value="">
 -- Choose Borrower --
 </option>
 
+<?php foreach($borrowers as $b): ?>
 
-<?php foreach ($borrowers as $b): ?>
+<option value="<?=(int)$b['id']?>">
 
-<option
-    value="<?= (int)$b['id'] ?>"
->
-
-<?= htmlspecialchars(
-    $b['first_name'] .
-    ' ' .
-    $b['last_name']
-) ?>
+<?=htmlspecialchars(
+    $b['first_name'].' '.$b['last_name']
+)?>
 
 </option>
 
@@ -3286,42 +2462,34 @@ Borrower
 
 </div>
 
-
 <div class="col-md-6 mb-3">
 
 <label class="form-label fw-semibold small">
-
 Funding Account / Wallet
 <span class="text-danger">*</span>
-
 </label>
 
-
 <select
-    name="account_id"
-    class="form-select"
-    required
->
+name="account_id"
+class="form-select"
+required>
 
 <option value="">
 -- Choose Account --
 </option>
 
+<?php foreach($accounts as $acc): ?>
 
-<?php foreach ($accounts as $acc): ?>
+<option value="<?=(int)$acc['id']?>">
 
-<option
-    value="<?= (int)$acc['id'] ?>"
->
-
-<?= htmlspecialchars(
+<?=htmlspecialchars(
     $acc['account_name']
-) ?>
-
-— ₱<?= number_format(
+)?>
+—
+₱<?=number_format(
     $acc['balance'],
     2
-) ?>
+)?>
 
 </option>
 
@@ -3333,141 +2501,108 @@ Funding Account / Wallet
 
 </div>
 
-
-<!-- REFERENCE / DATE -->
-
 <div class="row">
-
 
 <div class="col-md-6 mb-3">
 
 <label class="form-label fw-semibold small">
-
 Reference Number
-
-<span class="text-muted">
-(Optional)
-</span>
-
+<span class="text-muted">(Optional)</span>
 </label>
 
 <input
-    type="text"
-    name="reference_number"
-    class="form-control"
-    placeholder="e.g. LOAN-2026-001"
->
+type="text"
+name="reference_number"
+class="form-control"
+placeholder="e.g. LOAN-2026-001">
 
 </div>
-
 
 <div class="col-md-6 mb-3">
 
 <label class="form-label fw-semibold small">
-
 Loan Date
 <span class="text-danger">*</span>
-
 </label>
 
 <input
-    type="date"
-    name="loan_date"
-    id="loanDate"
-    class="form-control"
-    value="<?= date('Y-m-d') ?>"
-    required
->
+type="date"
+name="loan_date"
+id="loanDate"
+class="form-control"
+value="<?=date('Y-m-d')?>"
+required>
 
 </div>
 
 </div>
-
-
-<!-- AMOUNT / INTEREST -->
 
 <div class="row">
 
-
 <div class="col-md-4 mb-3">
 
 <label class="form-label fw-semibold small">
-
 Principal Amount (₱)
 <span class="text-danger">*</span>
-
 </label>
 
 <input
-    type="number"
-    step="0.01"
-    min="0.01"
-    name="principal_amount"
-    id="principalAmount"
-    class="form-control"
-    required
-    placeholder="5000.00"
->
+type="number"
+step="0.01"
+min="0.01"
+name="principal_amount"
+id="principalAmount"
+class="form-control"
+required
+placeholder="5000.00">
 
 </div>
-
 
 <div class="col-md-4 mb-3">
 
 <label class="form-label fw-semibold small">
-
 Interest Rate (%)
-
 </label>
 
 <input
-    type="number"
-    step="0.01"
-    min="0"
-    name="interest_rate"
-    id="interestRate"
-    class="form-control"
-    value="0"
-    placeholder="10"
->
+type="number"
+step="0.01"
+min="0"
+name="interest_rate"
+id="interestRate"
+class="form-control"
+value="0"
+placeholder="10">
 
 </div>
-
 
 <div class="col-md-4 mb-3">
 
 <label class="form-label fw-semibold small">
-
 Loan Term
-
 </label>
 
 <div class="input-group">
 
 <input
-    type="number"
-    min="1"
-    name="term_value"
-    id="termValue"
-    class="form-control"
-    value="4"
-    required
->
+type="number"
+min="1"
+name="term_value"
+id="termValue"
+class="form-control"
+value="4"
+required>
 
 <select
-    name="term_unit"
-    id="termUnit"
-    class="form-select"
->
+name="term_unit"
+id="termUnit"
+class="form-select">
 
 <option value="days">
 Days
 </option>
 
-<option
-    value="months"
-    selected
->
+<option value="months" selected>
 Months
 </option>
 
@@ -3479,28 +2614,20 @@ Months
 
 </div>
 
-
-<!-- PAYMENT FREQUENCY -->
-
 <div class="row">
-
 
 <div class="col-md-6 mb-3">
 
 <label class="form-label fw-semibold small">
-
 Payment Frequency
 <span class="text-danger">*</span>
-
 </label>
 
-
 <select
-    name="payment_frequency"
-    id="paymentFrequency"
-    class="form-select"
-    required
->
+name="payment_frequency"
+id="paymentFrequency"
+class="form-select"
+required>
 
 <option value="daily">
 Daily
@@ -3514,33 +2641,23 @@ Weekly
 Bi-weekly
 </option>
 
-<option
-    value="monthly"
-    selected
->
+<option value="monthly" selected>
 Monthly
 </option>
 
 </select>
 
-
 <div class="form-text">
-
 Choose how often the borrower should pay.
-
 </div>
 
 </div>
-
 
 <div class="col-md-6 mb-3">
 
 <label class="form-label fw-semibold small">
-
 Fixed Payment Amount
-
 </label>
-
 
 <div class="input-group">
 
@@ -3549,36 +2666,26 @@ Fixed Payment Amount
 </span>
 
 <input
-    type="number"
-    step="0.01"
-    name="fixed_payment_preview"
-    id="fixedPaymentPreview"
-    class="form-control"
-    readonly
->
+type="number"
+step="0.01"
+name="fixed_payment_preview"
+id="fixedPaymentPreview"
+class="form-control"
+readonly>
 
 </div>
-
 
 <div class="form-text">
-
 Automatically calculated from total payable.
-
 </div>
 
 </div>
 
 </div>
 
-
-<!-- PAYMENT SUMMARY -->
-
-<div
-    class="p-3 rounded-3 bg-body-tertiary border mb-4"
->
+<div class="p-3 rounded-3 bg-body-tertiary border mb-4">
 
 <div class="row g-3">
-
 
 <div class="col-6 col-md-3">
 
@@ -3586,15 +2693,11 @@ Automatically calculated from total payable.
 Total Interest
 </div>
 
-<div
-    class="fw-bold"
-    id="previewInterest"
->
+<div class="fw-bold" id="previewInterest">
 ₱0.00
 </div>
 
 </div>
-
 
 <div class="col-6 col-md-3">
 
@@ -3602,15 +2705,11 @@ Total Interest
 Total Payable
 </div>
 
-<div
-    class="fw-bold text-primary"
-    id="previewTotal"
->
+<div class="fw-bold text-primary" id="previewTotal">
 ₱0.00
 </div>
 
 </div>
-
 
 <div class="col-6 col-md-3">
 
@@ -3618,15 +2717,11 @@ Total Payable
 Number of Payments
 </div>
 
-<div
-    class="fw-bold"
-    id="previewPayments"
->
+<div class="fw-bold" id="previewPayments">
 0
 </div>
 
 </div>
-
 
 <div class="col-6 col-md-3">
 
@@ -3634,40 +2729,28 @@ Number of Payments
 Due Date
 </div>
 
-<div
-    class="fw-bold text-primary"
-    id="displayDueDate"
->
+<div class="fw-bold text-primary" id="displayDueDate">
 --
 </div>
 
 </div>
 
 </div>
-
 </div>
 
-
 <hr class="my-4 opacity-25">
-
-
-<!-- COLLATERAL -->
 
 <h6 class="fw-bold mb-3">
 
 <i class="bi bi-shield-check text-success me-2"></i>
-
 Collateral
-
 <span class="text-muted fw-normal small">
 (Optional)
 </span>
 
 </h6>
 
-
 <div class="row">
-
 
 <div class="col-md-6 mb-3">
 
@@ -3676,14 +2759,12 @@ Item Name / Title
 </label>
 
 <input
-    type="text"
-    name="collateral_item"
-    class="form-control"
-    placeholder="e.g. Smartphone, Jewelry, OR/CR"
->
+type="text"
+name="collateral_item"
+class="form-control"
+placeholder="e.g. Smartphone, Jewelry, OR/CR">
 
 </div>
-
 
 <div class="col-md-6 mb-3">
 
@@ -3692,52 +2773,42 @@ Estimated Value (₱)
 </label>
 
 <input
-    type="number"
-    step="0.01"
-    min="0"
-    name="collateral_value"
-    class="form-control"
->
+type="number"
+step="0.01"
+min="0"
+name="collateral_value"
+class="form-control">
 
 </div>
 
 </div>
-
 
 <div class="row">
-
 
 <div class="col-md-7 mb-3">
 
 <label class="form-label fw-semibold small">
-
 Description / Specs / Serial #
-
 </label>
 
 <textarea
-    name="collateral_description"
-    class="form-control"
-    rows="3"
-></textarea>
+name="collateral_description"
+class="form-control"
+rows="3"></textarea>
 
 </div>
-
 
 <div class="col-md-5 mb-3">
 
 <label class="form-label fw-semibold small">
-
 Collateral Photo
-
 </label>
 
 <input
-    type="file"
-    name="collateral_image"
-    class="form-control"
-    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
->
+type="file"
+name="collateral_image"
+class="form-control"
+accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
 
 <div class="form-text">
 JPG, PNG or WEBP
@@ -3749,330 +2820,554 @@ JPG, PNG or WEBP
 
 </div>
 
-
 <div class="modal-footer">
 
 <button
-    type="button"
-    class="btn btn-light fw-semibold"
-    data-bs-dismiss="modal"
->
-
+type="button"
+class="btn btn-light fw-semibold"
+data-bs-dismiss="modal">
 Cancel
-
 </button>
 
-
 <button
-    type="submit"
-    class="btn btn-primary fw-bold"
->
+type="submit"
+class="btn btn-primary fw-bold">
 
 <i class="bi bi-check-circle me-1"></i>
-
 Issue Loan
 
 </button>
 
 </div>
 
-
 </form>
 
 </div>
-
+</div>
 </div>
 
-</div>
-
-
-<script
-    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
-></script>
-
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
 
-/*
-|--------------------------------------------------------------------------
-| LOAN CALCULATOR
-|--------------------------------------------------------------------------
-*/
+document.addEventListener(
+    'DOMContentLoaded',
+    function(){
 
-function calculateLoanPreview()
-{
+        document.querySelectorAll(
+            '.payment-form'
+        ).forEach(function(form){
 
-    const principal =
+            const loanId=
+                form.dataset.loanId;
+
+            const checkboxes=
+                form.querySelectorAll(
+                    'input[name="schedule_ids[]"]'
+                );
+
+            const totalDisplay=
+                document.getElementById(
+                    'selectedTotal'+loanId
+                );
+
+            const countDisplay=
+                document.getElementById(
+                    'selectedCount'+loanId
+                );
+
+            const saveButton=
+                form.querySelector(
+                    '.save-payment-btn'
+                );
+
+            const selectAllButton=
+                form.querySelector(
+                    '.select-all-installments'
+                );
+
+            function updatePaymentTotal(){
+
+                let total=0;
+                let count=0;
+
+                checkboxes.forEach(
+                    function(checkbox){
+
+                        if(
+                            checkbox.checked&&
+                            !checkbox.disabled
+                        ){
+                            total+=
+                                parseFloat(
+                                    checkbox.dataset.amount
+                                )||0;
+
+                            count++;
+                        }
+
+                    }
+                );
+
+                total=
+                    Math.round(
+                        total*100
+                    )/100;
+
+                if(totalDisplay){
+                    totalDisplay.textContent=
+                        '₱'+
+                        total.toLocaleString(
+                            'en-PH',
+                            {
+                                minimumFractionDigits:2,
+                                maximumFractionDigits:2
+                            }
+                        );
+                }
+
+                if(countDisplay){
+                    countDisplay.textContent=
+                        count+
+                        (
+                            count===1
+                            ?' installment'
+                            :' installments'
+                        );
+                }
+
+                if(checkboxes.length>0){
+                    saveButton.disabled=
+                        count===0;
+                }
+
+                if(selectAllButton){
+
+                    const available=
+                        Array.from(
+                            checkboxes
+                        ).filter(
+                            c=>!c.disabled
+                        );
+
+                    const selected=
+                        available.filter(
+                            c=>c.checked
+                        );
+
+                    if(
+                        available.length>0&&
+                        selected.length===
+                        available.length
+                    ){
+                        selectAllButton.textContent=
+                            'Clear All';
+
+                        selectAllButton.classList.remove(
+                            'btn-outline-primary'
+                        );
+
+                        selectAllButton.classList.add(
+                            'btn-outline-danger'
+                        );
+                    }else{
+                        selectAllButton.textContent=
+                            'Select All';
+
+                        selectAllButton.classList.remove(
+                            'btn-outline-danger'
+                        );
+
+                        selectAllButton.classList.add(
+                            'btn-outline-primary'
+                        );
+                    }
+                }
+            }
+
+            checkboxes.forEach(
+                c=>c.addEventListener(
+                    'change',
+                    updatePaymentTotal
+                )
+            );
+
+            if(selectAllButton){
+
+                selectAllButton.addEventListener(
+                    'click',
+                    function(){
+
+                        const available=
+                            Array.from(
+                                checkboxes
+                            ).filter(
+                                c=>!c.disabled
+                            );
+
+                        const allSelected=
+                            available.length>0&&
+                            available.every(
+                                c=>c.checked
+                            );
+
+                        available.forEach(
+                            c=>{
+                                c.checked=
+                                    !allSelected;
+                            }
+                        );
+
+                        updatePaymentTotal();
+                    }
+                );
+            }
+
+            form.addEventListener(
+                'submit',
+                function(event){
+
+                    const hasSchedules=
+                        form.dataset.hasSchedules==='1';
+
+                    if(hasSchedules){
+
+                        const selected=
+                            Array.from(
+                                checkboxes
+                            ).filter(
+                                c=>
+                                    c.checked&&
+                                    !c.disabled
+                            );
+
+                        if(selected.length===0){
+
+                            event.preventDefault();
+
+                            alert(
+                                'Please select at least one installment to pay.'
+                            );
+
+                            return;
+                        }
+
+                        let total=0;
+
+                        selected.forEach(
+                            c=>{
+                                total+=
+                                    parseFloat(
+                                        c.dataset.amount
+                                    )||0;
+                            }
+                        );
+
+                        total=
+                            Math.round(
+                                total*100
+                            )/100;
+
+                        if(!confirm(
+                            'Record payment of ₱'+
+                            total.toLocaleString(
+                                'en-PH',
+                                {
+                                    minimumFractionDigits:2,
+                                    maximumFractionDigits:2
+                                }
+                            )+
+                            ' for '+
+                            selected.length+
+                            (
+                                selected.length===1
+                                ?' installment'
+                                :' installments'
+                            )+
+                            '?'
+                        )){
+                            event.preventDefault();
+                        }
+
+                    }else{
+
+                        const customInput=
+                            form.querySelector(
+                                '.custom-payment-input'
+                            );
+
+                        const val=
+                            parseFloat(
+                                customInput?.value
+                            )||0;
+
+                        const max=
+                            parseFloat(
+                                form.dataset.remaining
+                            )||0;
+
+                        if(
+                            val<=0||
+                            val>max
+                        ){
+                            event.preventDefault();
+
+                            alert(
+                                'Please enter a valid custom payment amount up to ₱'+
+                                max.toFixed(2)
+                            );
+
+                            return;
+                        }
+
+                        if(!confirm(
+                            'Record custom payment of ₱'+
+                            val.toLocaleString(
+                                'en-PH',
+                                {
+                                    minimumFractionDigits:2,
+                                    maximumFractionDigits:2
+                                }
+                            )+
+                            '?'
+                        )){
+                            event.preventDefault();
+                        }
+                    }
+                }
+            );
+
+            updatePaymentTotal();
+        });
+    }
+);
+
+document.addEventListener(
+    'input',
+    function(e){
+
+        if(
+            e.target&&
+            e.target.classList.contains(
+                'custom-payment-input'
+            )
+        ){
+
+            const form=
+                e.target.closest('form');
+
+            const saveBtn=
+                form.querySelector(
+                    '.save-payment-btn'
+                );
+
+            const val=
+                parseFloat(
+                    e.target.value
+                )||0;
+
+            const max=
+                parseFloat(
+                    form.dataset.remaining
+                )||0;
+
+            saveBtn.disabled=
+                !(
+                    val>0&&
+                    val<=max
+                );
+        }
+    }
+);
+
+function calculateLoanPreview(){
+
+    const principal=
         parseFloat(
             document.getElementById(
                 'principalAmount'
             )?.value
-        ) || 0;
+        )||0;
 
-
-    const interestRate =
+    const interestRate=
         parseFloat(
             document.getElementById(
                 'interestRate'
             )?.value
-        ) || 0;
+        )||0;
 
-
-    const termValue =
+    const termValue=
         parseInt(
             document.getElementById(
                 'termValue'
             )?.value
-        ) || 0;
+        )||0;
 
-
-    const termUnit =
+    const termUnit=
         document.getElementById(
             'termUnit'
-        )?.value ||
-        'months';
+        )?.value||'months';
 
-
-    const frequency =
+    const frequency=
         document.getElementById(
             'paymentFrequency'
-        )?.value ||
-        'monthly';
+        )?.value||'monthly';
 
+    const interest=
+        principal*
+        (interestRate/100);
 
-    const interest =
-        principal *
-        (
-            interestRate /
-            100
-        );
-
-
-    const total =
-        principal +
+    const total=
+        principal+
         interest;
 
+    let payments=1;
 
-    let payments = 1;
+    if(termUnit==='months'){
 
-
-    if (termUnit === 'months') {
-
-        if (frequency === 'daily') {
-
-            payments =
-                termValue * 30;
-
-        } else if (
-            frequency === 'weekly'
-        ) {
-
-            payments =
-                termValue * 4;
-
-        } else if (
-            frequency === 'biweekly'
-        ) {
-
-            payments =
-                termValue * 2;
-
-        } else {
-
-            payments =
-                termValue;
+        if(frequency==='daily'){
+            payments=termValue*30;
+        }else if(frequency==='weekly'){
+            payments=termValue*4;
+        }else if(frequency==='biweekly'){
+            payments=termValue*2;
+        }else{
+            payments=termValue;
         }
 
-    } else {
+    }else{
 
-        if (frequency === 'daily') {
-
-            payments =
-                termValue;
-
-        } else if (
-            frequency === 'weekly'
-        ) {
-
-            payments =
-                Math.ceil(
-                    termValue / 7
-                );
-
-        } else if (
-            frequency === 'biweekly'
-        ) {
-
-            payments =
-                Math.ceil(
-                    termValue / 14
-                );
-
-        } else {
-
-            payments =
-                Math.ceil(
-                    termValue / 30
-                );
+        if(frequency==='daily'){
+            payments=termValue;
+        }else if(frequency==='weekly'){
+            payments=Math.ceil(
+                termValue/7
+            );
+        }else if(frequency==='biweekly'){
+            payments=Math.ceil(
+                termValue/14
+            );
+        }else{
+            payments=Math.ceil(
+                termValue/30
+            );
         }
     }
 
-
-    payments =
+    payments=
         Math.max(
             1,
             payments
         );
 
-
-    const fixedPayment =
-        total /
-        payments;
-
+    const fixedPayment=
+        total/payments;
 
     document.getElementById(
         'previewInterest'
-    ).textContent =
-        '₱' +
+    ).textContent=
+        '₱'+
         interest.toLocaleString(
             'en-PH',
             {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
+                minimumFractionDigits:2,
+                maximumFractionDigits:2
             }
         );
-
 
     document.getElementById(
         'previewTotal'
-    ).textContent =
-        '₱' +
+    ).textContent=
+        '₱'+
         total.toLocaleString(
             'en-PH',
             {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
+                minimumFractionDigits:2,
+                maximumFractionDigits:2
             }
         );
 
-
     document.getElementById(
         'previewPayments'
-    ).textContent =
+    ).textContent=
         payments;
-
 
     document.getElementById(
         'fixedPaymentPreview'
-    ).value =
+    ).value=
         fixedPayment.toFixed(2);
 
-
     calculateDueDate();
-
 }
 
+function calculateDueDate(){
 
-/*
-|--------------------------------------------------------------------------
-| DUE DATE
-|--------------------------------------------------------------------------
-*/
-
-function calculateDueDate()
-{
-
-    const loanDate =
+    const loanDate=
         document.getElementById(
             'loanDate'
         )?.value;
 
-
-    const termValue =
+    const termValue=
         parseInt(
             document.getElementById(
                 'termValue'
             )?.value
-        ) || 0;
+        )||0;
 
-
-    const termUnit =
+    const termUnit=
         document.getElementById(
             'termUnit'
-        )?.value ||
-        'months';
+        )?.value||'months';
 
-
-    const display =
+    const display=
         document.getElementById(
             'displayDueDate'
         );
 
-
-    if (
-        !loanDate ||
-        termValue <= 0
-    ) {
-
-        display.textContent =
-            '--';
-
+    if(
+        !loanDate||
+        termValue<=0
+    ){
+        display.textContent='--';
         return;
     }
 
-
-    const parts =
+    const parts=
         loanDate.split('-');
 
-
-    const date =
+    const date=
         new Date(
             parseInt(parts[0]),
-            parseInt(parts[1]) - 1,
+            parseInt(parts[1])-1,
             parseInt(parts[2])
         );
 
-
-    if (
-        termUnit === 'months'
-    ) {
-
+    if(termUnit==='months'){
         date.setMonth(
-            date.getMonth() +
+            date.getMonth()+
             termValue
         );
-
-    } else {
-
+    }else{
         date.setDate(
-            date.getDate() +
+            date.getDate()+
             termValue
         );
     }
 
-
-    display.textContent =
+    display.textContent=
         date.toLocaleDateString(
             'en-US',
             {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
+                year:'numeric',
+                month:'short',
+                day:'numeric'
             }
         );
 }
 
-
-/*
-|--------------------------------------------------------------------------
-| EVENT LISTENERS
-|--------------------------------------------------------------------------
-*/
-
 document.addEventListener(
     'DOMContentLoaded',
-    function ()
-    {
+    function(){
 
         [
             'principalAmount',
@@ -4082,25 +3377,19 @@ document.addEventListener(
             'paymentFrequency',
             'loanDate'
         ].forEach(
-            function (id)
-            {
+            function(id){
 
-                const element =
-                    document.getElementById(
-                        id
-                    );
+                const element=
+                    document.getElementById(id);
 
-
-                if (!element) {
+                if(!element){
                     return;
                 }
-
 
                 element.addEventListener(
                     'input',
                     calculateLoanPreview
                 );
-
 
                 element.addEventListener(
                     'change',
@@ -4109,15 +3398,11 @@ document.addEventListener(
             }
         );
 
-
         calculateLoanPreview();
-
     }
 );
 
 </script>
 
-
 </body>
-
 </html>

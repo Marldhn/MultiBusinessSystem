@@ -1,146 +1,374 @@
 <?php
-// Load the core application bootstrap
+
+// =========================================================
+// LOAD APPLICATION BOOTSTRAP
+// =========================================================
+
 require_once __DIR__ . '/../app/app.php';
 
-// Determine which page/view to load based on the URL query parameter (e.g., index.php?page=login)
-$page = isset($_GET['page']) ? $_GET['page'] : 'login';
+
+// =========================================================
+// GET PAGE
+// =========================================================
+
+$page = $_GET['page'] ?? 'login';
+
+
+// =========================================================
+// ROUTING
+// =========================================================
 
 switch ($page) {
+
+    // =====================================================
+    // LOGIN
+    // =====================================================
+
     case 'login':
+
         require_once __DIR__ . '/../resources/login.php';
+
         break;
+
+
+    // =====================================================
+    // REGISTER
+    // =====================================================
+
+    case 'register':
+
+        require_once __DIR__ . '/../resources/register.php';
+
+        break;
+
+
+    case 'register_process':
+
+        require_once __DIR__ . '/../app/register_process.php';
+
+        break;
+
+
+    // =====================================================
+    // SELECT BUSINESS
+    // =====================================================
 
     case 'select_business':
-        // Authentication guard
+
         if (!isset($_SESSION['user_id'])) {
             header('Location: index.php?page=login');
             exit;
         }
+
         require_once __DIR__ . '/../resources/select_business.php';
+
         break;
+
+
+    // =====================================================
+    // SETTINGS
+    // =====================================================
 
     case 'settings':
-        // Authentication guard
+
         if (!isset($_SESSION['user_id'])) {
             header('Location: index.php?page=login');
             exit;
         }
+
         require_once __DIR__ . '/../resources/settings.php';
+
         break;
+
+
+    // =====================================================
+    // SUBSCRIPTION
+    // =====================================================
 
     case 'subscription':
-        // Authentication guard
+
         if (!isset($_SESSION['user_id'])) {
             header('Location: index.php?page=login');
             exit;
         }
+
         require_once __DIR__ . '/../resources/subscription.php';
+
         break;
+
+
+    // =====================================================
+    // DASHBOARD
+    // =====================================================
 
     case 'dashboard':
-        // Authentication guard
+
         if (!isset($_SESSION['user_id'])) {
             header('Location: index.php?page=login');
             exit;
         }
+
         require_once __DIR__ . '/../modules/LoanManagement/dashboard.php';
+
         break;
 
-    // Borrowers Module Routes
+
+    // =====================================================
+    // BORROWERS
+    // =====================================================
+
     case 'borrowers':
+
         if (!isset($_SESSION['user_id'])) {
             header('Location: index.php?page=login');
             exit;
         }
+
         require_once __DIR__ . '/../modules/LoanManagement/borrowers/index.php';
+
         break;
+
 
     case 'borrower_create':
+
         if (!isset($_SESSION['user_id'])) {
             header('Location: index.php?page=login');
             exit;
         }
+
         require_once __DIR__ . '/../modules/LoanManagement/borrowers/create.php';
+
         break;
+
 
     case 'borrower_details':
+
         if (!isset($_SESSION['user_id'])) {
             header('Location: index.php?page=login');
             exit;
         }
+
         require_once __DIR__ . '/../modules/LoanManagement/borrowers/details.php';
+
         break;
 
-    case 'logout':
-        session_destroy();
-        header('Location: index.php?page=login');
-        exit;
 
-    // Account Module Routes
+    // =====================================================
+    // LOAN ACCOUNTS
+    // =====================================================
+
     case 'loan_accounts':
+
         if (!isset($_SESSION['user_id'])) {
             header('Location: index.php?page=login');
             exit;
         }
+
         require_once __DIR__ . '/../modules/LoanManagement/accounts/index.php';
+
         break;
+
 
     case 'loan_account_details':
+
         if (!isset($_SESSION['user_id'])) {
             header('Location: index.php?page=login');
             exit;
         }
+
         require_once __DIR__ . '/../modules/LoanManagement/accounts/details.php';
+
         break;
 
-    // Loan Module Routes
+
+    // =====================================================
+    // LOANS
+    // =====================================================
+
     case 'loans':
+
         if (!isset($_SESSION['user_id'])) {
             header('Location: index.php?page=login');
             exit;
         }
+
         require_once __DIR__ . '/../modules/LoanManagement/loans/index.php';
+
         break;
+
 
     case 'loan_details':
+
         if (!isset($_SESSION['user_id'])) {
             header('Location: index.php?page=login');
             exit;
         }
+
         require_once __DIR__ . '/../modules/LoanManagement/loans/details.php';
+
         break;
 
-    // Payments Module Route
+
+    // =====================================================
+    // PAYMENTS
+    // =====================================================
+
     case 'payments':
+
         if (!isset($_SESSION['user_id'])) {
             header('Location: index.php?page=login');
             exit;
         }
+
         require_once __DIR__ . '/../modules/LoanManagement/payments/index.php';
+
         break;
 
-    // Collateral Module Routes
+
+    // =====================================================
+    // COLLATERALS
+    // =====================================================
+
     case 'collaterals':
+
         if (!isset($_SESSION['user_id'])) {
             header('Location: index.php?page=login');
             exit;
         }
+
         require_once __DIR__ . '/../modules/LoanManagement/collaterals/index.php';
+
         break;
+
+
+    // =====================================================
+    // REPORTS
+    // =====================================================
+
+    case 'reports':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/LoanManagement/reports/reports.php';
+
+        break;
+
+
+    // =====================================================
+    // ADMIN PORTAL
+    // =====================================================
+
+    case 'admin_portal':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (
+            !isset($_SESSION['role']) ||
+            $_SESSION['role'] !== 'super_admin'
+        ) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../resources/admin_portal.php';
+
+        break;
+
+
+    // =====================================================
+    // ADMIN BUSINESS DETAILS
+    // =====================================================
+
+    case 'admin_business_details':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (
+            !isset($_SESSION['role']) ||
+            $_SESSION['role'] !== 'super_admin'
+        ) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../resources/admin_business_details.php';
+
+        break;
+
+
+    // =====================================================
+    // ADMIN USER DETAILS
+    // =====================================================
+
+    case 'admin_user_details':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (
+            !isset($_SESSION['role']) ||
+            $_SESSION['role'] !== 'super_admin'
+        ) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../resources/admin_user_details.php';
+
+        break;
+
+
+    // =====================================================
+    // LOGOUT
+    // =====================================================
+
+    case 'logout':
+
+        session_destroy();
+
+        header('Location: index.php?page=login');
+
+        exit;
+
+
+    // =====================================================
+    // 404
+    // =====================================================
 
     default:
+
         http_response_code(404);
-        echo "<div style='font-family: Arial; text-align: center; margin-top: 50px;'>
-                <h1>404 - Page Not Found</h1>
-                <p>The page you are looking for does not exist.</p>
-                <a href='index.php?page=login'>Go back to Login</a>
-              </div>";
+
+        echo "
+        <div style='
+            font-family: Arial;
+            text-align: center;
+            margin-top: 50px;
+        '>
+
+            <h1>404 - Page Not Found</h1>
+
+            <p>
+                The page you are looking for does not exist.
+            </p>
+
+            <a href='index.php?page=login'>
+                Go back to Login
+            </a>
+
+        </div>";
+
         break;
-
-        // Reports Module Routes
-
-        case 'reports':
-    include __DIR__ . '/../modules/LoanManagement/reports/reports.php';
-    break;
 }
 ?>

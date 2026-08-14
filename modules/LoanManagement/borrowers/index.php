@@ -1,16 +1,18 @@
 <?php
-$pdo = Database::getConnection();
-$businessId = $_SESSION['business_id'] ?? null;
 
-if (!$businessId) {
-    header('Location: index.php?page=select_business');
+$pdo = Database::getConnection();
+
+$businessId = $_SESSION['business_id'] ?? null;
+$userId = $_SESSION['user_id'] ?? null;
+
+if (!$businessId || !$userId) {
+    header('Location: index.php?page=login');
     exit;
 }
 
 $error = '';
 $success = '';
 
-// Handle Add Borrower Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_borrower'])) {
 
     $firstName = trim($_POST['first_name'] ?? '');
@@ -18,16 +20,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_borrower'])) {
     $contactNo = trim($_POST['contact_no'] ?? '');
     $address = trim($_POST['address'] ?? '');
 
-    if (!empty($firstName) && !empty($lastName)) {
+    if ($firstName !== '' && $lastName !== '') {
 
         $stmt = $pdo->prepare("
             INSERT INTO loan_borrowers
-            (business_id, first_name, last_name, contact_no, address)
-            VALUES (?, ?, ?, ?, ?)
+            (business_id, created_by, first_name, last_name, contact_no, address)
+            VALUES (?, ?, ?, ?, ?, ?)
         ");
 
         $stmt->execute([
             $businessId,
+            $userId,
             $firstName,
             $lastName,
             $contactNo,
@@ -38,27 +41,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_borrower'])) {
         exit;
 
     } else {
-        $error = "Both First Name and Last Name are required.";
+        $error = 'Both First Name and Last Name are required.';
     }
 }
 
 if (isset($_GET['success'])) {
-    $success = "Borrower added successfully!";
+    $success = 'Borrower added successfully!';
 }
 
 $activePage = 'borrowers';
-$pageTitle = "Borrowers - Loan Management";
+$pageTitle = 'Borrowers - Loan Management';
 
-// Fetch borrowers
 $stmt = $pdo->prepare("
     SELECT *
     FROM loan_borrowers
     WHERE business_id = ?
+      AND created_by = ?
     ORDER BY created_at DESC
 ");
 
-$stmt->execute([$businessId]);
+$stmt->execute([
+    $businessId,
+    $userId
+]);
+
 $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 ?>
 
 <!DOCTYPE html>
@@ -71,19 +79,16 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     <title><?= htmlspecialchars($pageTitle) ?></title>
 
-    <!-- Bootstrap -->
     <link
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
         rel="stylesheet"
     >
 
-    <!-- Bootstrap Icons -->
     <link
         href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"
         rel="stylesheet"
     >
 
-    <!-- Prevent theme flash -->
     <script>
         (function () {
             const savedTheme = localStorage.getItem('bs-theme') || 'light';
@@ -101,12 +106,10 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
             min-width: 0;
         }
 
-        /* Page Header */
         .page-header {
             margin-bottom: 24px;
         }
 
-        /* Search Card */
         .search-card {
             border: 0;
             border-radius: 16px;
@@ -132,14 +135,12 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
             box-shadow: none;
         }
 
-        /* Main Card */
         .borrowers-card {
             border: 0;
             border-radius: 16px;
             overflow: hidden;
         }
 
-        /* Avatar */
         .borrower-avatar {
             width: 38px;
             height: 38px;
@@ -152,7 +153,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
             font-size: 0.8rem;
         }
 
-        /* Table */
         .borrowers-table th {
             font-size: 0.72rem;
             letter-spacing: 0.04em;
@@ -164,7 +164,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
             padding-bottom: 14px;
         }
 
-        /* Mobile Cards */
         .mobile-borrowers {
             display: none;
         }
@@ -213,12 +212,10 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
             border-top: 1px solid var(--bs-border-color);
         }
 
-        /* Empty State */
         .empty-state {
             padding: 55px 20px;
         }
 
-        /* Alerts */
         .page-alert {
             border: 0;
             border-radius: 12px;
@@ -234,7 +231,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 padding: 14px !important;
             }
 
-            /* Header */
             .page-header {
                 margin-bottom: 16px;
             }
@@ -253,13 +249,11 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 justify-content: center;
             }
 
-            /* Alerts */
             .page-alert {
                 font-size: 0.78rem;
                 margin-bottom: 14px !important;
             }
 
-            /* Search */
             .search-card {
                 border-radius: 14px;
                 margin-bottom: 14px !important;
@@ -277,12 +271,10 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 font-size: 0.82rem;
             }
 
-            /* Hide desktop table */
             .desktop-borrowers {
                 display: none;
             }
 
-            /* Show mobile cards */
             .mobile-borrowers {
                 display: block;
                 padding: 12px;
@@ -300,7 +292,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 padding: 35px 15px;
             }
 
-            /* Modal */
             .modal-dialog {
                 margin: 10px;
             }
@@ -342,22 +333,11 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 <div class="d-flex flex-column flex-lg-row min-vh-100">
 
-    <!-- Sidebar -->
     <?php include __DIR__ . '/../../../resources/partials/loansidebar.php'; ?>
-
-
-    <!-- =========================
-         MAIN CONTENT
-    ========================== -->
 
     <main class="borrowers-main flex-grow-1 bg-body-tertiary">
 
         <div class="main-content p-3 p-md-4">
-
-
-            <!-- =========================
-                 PAGE HEADER
-            ========================== -->
 
             <div class="page-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
 
@@ -376,19 +356,14 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     </div>
 
                     <p class="page-subtitle text-muted small mb-0">
-
                         Manage clients registered under
-
                         <span class="fw-semibold text-primary">
                             <?= htmlspecialchars($_SESSION['business_name'] ?? '') ?>
                         </span>
-
                     </p>
 
                 </div>
 
-
-                <!-- Add Borrower -->
                 <button
                     type="button"
                     class="add-borrower-btn btn btn-primary fw-bold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2 text-nowrap"
@@ -401,11 +376,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             </div>
 
-
-            <!-- =========================
-                 SUCCESS / ERROR
-            ========================== -->
-
             <?php if (!empty($success)): ?>
 
                 <div
@@ -413,7 +383,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     role="alert"
                 >
                     <i class="bi bi-check-circle-fill me-2"></i>
-
                     <?= htmlspecialchars($success) ?>
 
                     <button
@@ -426,7 +395,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             <?php endif; ?>
 
-
             <?php if (!empty($error)): ?>
 
                 <div
@@ -434,7 +402,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     role="alert"
                 >
                     <i class="bi bi-exclamation-triangle-fill me-2"></i>
-
                     <?= htmlspecialchars($error) ?>
 
                     <button
@@ -446,11 +413,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 </div>
 
             <?php endif; ?>
-
-
-            <!-- =========================
-                 SEARCH
-            ========================== -->
 
             <div class="search-card card shadow-sm mb-4">
 
@@ -485,17 +447,7 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             </div>
 
-
-            <!-- =========================
-                 BORROWERS CARD
-            ========================== -->
-
             <div class="borrowers-card card shadow-sm bg-body">
-
-
-                <!-- =========================
-                     DESKTOP TABLE
-                ========================== -->
 
                 <div class="desktop-borrowers table-responsive">
 
@@ -524,7 +476,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             </tr>
 
                         </thead>
-
 
                         <tbody id="borrowersTableBody">
 
@@ -569,6 +520,7 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <?php foreach ($borrowers as $b): ?>
 
                                 <?php
+
                                 $fullName = trim(
                                     ($b['first_name'] ?? '') . ' ' .
                                     ($b['last_name'] ?? '')
@@ -577,11 +529,11 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 $initial = strtoupper(
                                     substr($b['first_name'] ?? 'B', 0, 1)
                                 );
+
                                 ?>
 
                                 <tr class="borrower-row">
 
-                                    <!-- Name -->
                                     <td class="ps-4">
 
                                         <div class="d-flex align-items-center gap-3">
@@ -606,8 +558,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                     </td>
 
-
-                                    <!-- Contact -->
                                     <td>
 
                                         <?php if (!empty($b['contact_no'])): ?>
@@ -627,8 +577,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                     </td>
 
-
-                                    <!-- Address -->
                                     <td>
 
                                         <div
@@ -636,8 +584,7 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                             style="max-width: 280px;"
                                             title="<?= htmlspecialchars($b['address'] ?? '') ?>"
                                         >
-                                            <?=
-                                            !empty($b['address'])
+                                            <?= !empty($b['address'])
                                                 ? htmlspecialchars($b['address'])
                                                 : 'No address provided'
                                             ?>
@@ -645,12 +592,10 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                     </td>
 
-
-                                    <!-- Actions -->
                                     <td class="text-end pe-4">
 
                                         <a
-                                            href="index.php?page=borrower_details&id=<?= $b['id'] ?>"
+                                            href="index.php?page=borrower_details&id=<?= (int)$b['id'] ?>"
                                             class="btn btn-sm btn-outline-secondary rounded-3 px-3"
                                             title="View Borrower Details"
                                         >
@@ -671,11 +616,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     </table>
 
                 </div>
-
-
-                <!-- =========================
-                     MOBILE BORROWER CARDS
-                ========================== -->
 
                 <div class="mobile-borrowers" id="mobileBorrowers">
 
@@ -712,6 +652,7 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <?php foreach ($borrowers as $b): ?>
 
                             <?php
+
                             $fullName = trim(
                                 ($b['first_name'] ?? '') . ' ' .
                                 ($b['last_name'] ?? '')
@@ -720,17 +661,18 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             $initial = strtoupper(
                                 substr($b['first_name'] ?? 'B', 0, 1)
                             );
+
+                            $searchData = strtolower(
+                                $fullName . ' ' .
+                                ($b['contact_no'] ?? '') . ' ' .
+                                ($b['address'] ?? '')
+                            );
+
                             ?>
 
                             <div
                                 class="mobile-borrower-card borrower-mobile-item"
-                                data-search="<?= htmlspecialchars(
-                                    strtolower(
-                                        $fullName . ' ' .
-                                        ($b['contact_no'] ?? '') . ' ' .
-                                        ($b['address'] ?? '')
-                                    )
-                                ) ?>"
+                                data-search="<?= htmlspecialchars($searchData) ?>"
                             >
 
                                 <div class="mobile-borrower-top">
@@ -765,19 +707,16 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                 </div>
 
-
                                 <div class="mobile-borrower-address mt-3">
 
                                     <i class="bi bi-geo-alt me-1"></i>
 
-                                    <?=
-                                    !empty($b['address'])
+                                    <?= !empty($b['address'])
                                         ? htmlspecialchars($b['address'])
                                         : 'No address provided'
                                     ?>
 
                                 </div>
-
 
                                 <div class="mobile-borrower-footer">
 
@@ -786,7 +725,7 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     </span>
 
                                     <a
-                                        href="index.php?page=borrower_details&id=<?= $b['id'] ?>"
+                                        href="index.php?page=borrower_details&id=<?= (int)$b['id'] ?>"
                                         class="btn btn-sm btn-outline-primary rounded-3 px-3"
                                     >
                                         <i class="bi bi-eye me-1"></i>
@@ -803,12 +742,11 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                 </div>
 
-
-                <!-- No Search Results -->
                 <div
                     id="noSearchResults"
                     class="text-center text-muted py-5 d-none"
                 >
+
                     <i class="bi bi-search display-6 opacity-50"></i>
 
                     <div class="fw-semibold mt-3">
@@ -818,6 +756,7 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <div class="small">
                         Try searching using a different name, contact number, or address.
                     </div>
+
                 </div>
 
             </div>
@@ -827,11 +766,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </main>
 
 </div>
-
-
-<!-- =========================
-     ADD BORROWER MODAL
-========================== -->
 
 <div
     class="modal fade"
@@ -845,7 +779,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         <div class="modal-content border-0 shadow-lg rounded-4">
 
-            <!-- Modal Header -->
             <div class="modal-header border-bottom px-4 py-3">
 
                 <h5
@@ -865,8 +798,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             </div>
 
-
-            <!-- Form -->
             <form method="POST">
 
                 <input
@@ -875,13 +806,10 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     value="1"
                 >
 
-
-                <!-- Modal Body -->
                 <div class="modal-body p-4">
 
                     <div class="row">
 
-                        <!-- First Name -->
                         <div class="col-md-6 mb-3">
 
                             <label class="form-label fw-semibold small">
@@ -900,8 +828,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                         </div>
 
-
-                        <!-- Last Name -->
                         <div class="col-md-6 mb-3">
 
                             <label class="form-label fw-semibold small">
@@ -922,8 +848,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                     </div>
 
-
-                    <!-- Contact -->
                     <div class="mb-3">
 
                         <label class="form-label fw-semibold small">
@@ -940,8 +864,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                     </div>
 
-
-                    <!-- Address -->
                     <div class="mb-2">
 
                         <label class="form-label fw-semibold small">
@@ -960,8 +882,6 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                 </div>
 
-
-                <!-- Modal Footer -->
                 <div class="modal-footer border-top px-4 py-3">
 
                     <button
@@ -990,14 +910,10 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 </div>
 
-
-<!-- Bootstrap JS -->
 <script
     src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
 ></script>
 
-
-<!-- Search -->
 <script>
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -1009,72 +925,44 @@ document.addEventListener('DOMContentLoaded', function () {
     const desktopRows = document.querySelectorAll('.borrower-row');
     const mobileItems = document.querySelectorAll('.borrower-mobile-item');
 
-
     function performSearch() {
 
-        const searchTerm = searchInput.value
-            .toLowerCase()
-            .trim();
+        const searchTerm = searchInput.value.toLowerCase().trim();
 
         let desktopMatches = 0;
         let mobileMatches = 0;
-
-
-        /* Desktop */
 
         desktopRows.forEach(function (row) {
 
             const text = row.textContent.toLowerCase();
 
             if (text.includes(searchTerm)) {
-
                 row.style.display = '';
                 desktopMatches++;
-
             } else {
-
                 row.style.display = 'none';
-
             }
 
         });
-
-
-        /* Mobile */
 
         mobileItems.forEach(function (item) {
 
-            const searchData =
-                item.getAttribute('data-search') || '';
+            const searchData = item.getAttribute('data-search') || '';
 
             if (searchData.includes(searchTerm)) {
-
                 item.style.display = '';
                 mobileMatches++;
-
             } else {
-
                 item.style.display = 'none';
-
             }
 
         });
 
-
-        /* Clear button */
-
         if (searchTerm.length > 0) {
-
             clearButton.classList.remove('d-none');
-
         } else {
-
             clearButton.classList.add('d-none');
-
         }
-
-
-        /* No results */
 
         const totalMatches =
             window.innerWidth < 576
@@ -1082,20 +970,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 : desktopMatches;
 
         if (searchTerm.length > 0 && totalMatches === 0) {
-
             noResults.classList.remove('d-none');
-
         } else {
-
             noResults.classList.add('d-none');
-
         }
 
     }
 
-
     searchInput.addEventListener('input', performSearch);
-
 
     clearButton.addEventListener('click', function () {
 
