@@ -20,10 +20,11 @@ if ($targetUserId <= 0) {
 $error = '';
 $success = '';
 
-
-// =========================================================
-// HANDLE ACTIONS
-// =========================================================
+/*
+|--------------------------------------------------------------------------
+| HANDLE ACTIONS
+|--------------------------------------------------------------------------
+*/
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
@@ -31,15 +32,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
 
-        // =====================================================
-        // APPROVE USER
-        // =====================================================
+        /*
+        |--------------------------------------------------------------------------
+        | APPROVE USER
+        |--------------------------------------------------------------------------
+        */
 
         if ($action === 'approve_user') {
 
             $stmt = $pdo->prepare("
                 UPDATE users
-                SET is_approved = 1
+                SET status = 'active'
                 WHERE id = ?
             ");
 
@@ -48,16 +51,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $success = 'User approved successfully.';
         }
 
-
-        // =====================================================
-        // REJECT USER
-        // =====================================================
+        /*
+        |--------------------------------------------------------------------------
+        | REJECT USER
+        |--------------------------------------------------------------------------
+        */
 
         elseif ($action === 'reject_user') {
 
             $stmt = $pdo->prepare("
                 UPDATE users
-                SET is_approved = 0
+                SET status = 'inactive'
                 WHERE id = ?
             ");
 
@@ -66,16 +70,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $success = 'User rejected successfully.';
         }
 
-
-        // =====================================================
-        // SAVE BUSINESS ACCESS
-        // =====================================================
+        /*
+        |--------------------------------------------------------------------------
+        | SAVE BUSINESS ACCESS
+        |--------------------------------------------------------------------------
+        */
 
         elseif ($action === 'save_business_access') {
 
             $selectedBusinesses = $_POST['business'] ?? [];
 
-            // Get every business
+            /*
+            | Get all businesses
+            */
+
             $stmt = $pdo->query("
                 SELECT id
                 FROM businesses
@@ -91,9 +99,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $selectedBusinesses[$businessId]['active']
                 );
 
-                // ---------------------------------------------
-                // USER HAS ACCESS
-                // ---------------------------------------------
+                /*
+                |--------------------------------------------------------------------------
+                | USER HAS ACCESS
+                |--------------------------------------------------------------------------
+                */
 
                 if ($active) {
 
@@ -121,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ");
 
                         $update->execute([
-                            'business_owner',
+                            'admin',
                             $existing['id']
                         ]);
 
@@ -140,15 +150,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $insert->execute([
                             $businessId,
                             $targetUserId,
-                            'business_owner'
+                            'admin'
                         ]);
                     }
 
                 }
 
-                // ---------------------------------------------
-                // USER DOES NOT HAVE ACCESS
-                // ---------------------------------------------
+                /*
+                |--------------------------------------------------------------------------
+                | USER DOES NOT HAVE ACCESS
+                |--------------------------------------------------------------------------
+                */
 
                 else {
 
@@ -175,9 +187,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 
-// =========================================================
-// GET USER
-// =========================================================
+/*
+|--------------------------------------------------------------------------
+| GET USER
+|--------------------------------------------------------------------------
+*/
 
 $stmt = $pdo->prepare("
     SELECT
@@ -185,7 +199,7 @@ $stmt = $pdo->prepare("
         name,
         email,
         role,
-        is_approved,
+        status,
         created_at,
         updated_at
     FROM users
@@ -203,28 +217,33 @@ if (!$user) {
 }
 
 
-// =========================================================
-// GET BUSINESSES
-// =========================================================
+/*
+|--------------------------------------------------------------------------
+| GET BUSINESSES
+|--------------------------------------------------------------------------
+*/
 
 $stmt = $pdo->query("
     SELECT
         id,
-        owner_id,
-        business_name,
-        slug,
+        name,
+        email,
+        phone,
+        address,
         status,
         created_at
     FROM businesses
-    ORDER BY business_name ASC
+    ORDER BY name ASC
 ");
 
 $businesses = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 
-// =========================================================
-// GET BUSINESSES ASSIGNED TO USER
-// =========================================================
+/*
+|--------------------------------------------------------------------------
+| GET BUSINESSES ASSIGNED TO USER
+|--------------------------------------------------------------------------
+*/
 
 $stmt = $pdo->prepare("
     SELECT
@@ -244,9 +263,11 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
 }
 
 
-// =========================================================
-// PAGE
-// =========================================================
+/*
+|--------------------------------------------------------------------------
+| PAGE
+|--------------------------------------------------------------------------
+*/
 
 $pageTitle = 'User Details';
 
@@ -256,9 +277,7 @@ include __DIR__ . '/partials/header.php';
 
 <div class="container py-4">
 
-    <!-- =====================================================
-         HEADER
-         ===================================================== -->
+    <!-- HEADER -->
 
     <div class="d-flex justify-content-between align-items-center mb-4">
 
@@ -274,20 +293,18 @@ include __DIR__ . '/partials/header.php';
 
         </div>
 
-        <a href="index.php?page=admin_portal"
-           class="btn btn-outline-secondary btn-sm">
-
+        <a
+            href="index.php?page=admin_portal"
+            class="btn btn-outline-secondary btn-sm"
+        >
             <i class="bi bi-arrow-left me-1"></i>
             Back to Admin Portal
-
         </a>
 
     </div>
 
 
-    <!-- =====================================================
-         SUCCESS
-         ===================================================== -->
+    <!-- SUCCESS -->
 
     <?php if ($success): ?>
 
@@ -302,9 +319,7 @@ include __DIR__ . '/partials/header.php';
     <?php endif; ?>
 
 
-    <!-- =====================================================
-         ERROR
-         ===================================================== -->
+    <!-- ERROR -->
 
     <?php if ($error): ?>
 
@@ -319,9 +334,7 @@ include __DIR__ . '/partials/header.php';
     <?php endif; ?>
 
 
-    <!-- =====================================================
-         USER INFORMATION
-         ===================================================== -->
+    <!-- USER INFORMATION -->
 
     <div class="card shadow-sm border-0 rounded-4 mb-4">
 
@@ -349,9 +362,7 @@ include __DIR__ . '/partials/header.php';
 
                     <div class="fw-bold fs-5">
 
-                        <?= htmlspecialchars(
-                            $user['name']
-                        ) ?>
+                        <?= htmlspecialchars($user['name']) ?>
 
                     </div>
 
@@ -366,9 +377,7 @@ include __DIR__ . '/partials/header.php';
 
                     <div class="fw-bold fs-5">
 
-                        <?= htmlspecialchars(
-                            $user['email']
-                        ) ?>
+                        <?= htmlspecialchars($user['email']) ?>
 
                     </div>
 
@@ -381,10 +390,26 @@ include __DIR__ . '/partials/header.php';
                         Role
                     </div>
 
-                    <span class="badge bg-primary">
+                    <?php
+
+                    $role = $user['role'] ?? 'staff';
+
+                    $roleClass = 'secondary';
+
+                    if ($role === 'super_admin') {
+                        $roleClass = 'danger';
+                    } elseif ($role === 'admin') {
+                        $roleClass = 'primary';
+                    } elseif ($role === 'staff') {
+                        $roleClass = 'secondary';
+                    }
+
+                    ?>
+
+                    <span class="badge bg-<?= $roleClass ?>">
 
                         <?= htmlspecialchars(
-                            ucfirst($user['role'])
+                            ucwords(str_replace('_', ' ', $role))
                         ) ?>
 
                     </span>
@@ -395,26 +420,42 @@ include __DIR__ . '/partials/header.php';
                 <div class="col-md-4">
 
                     <div class="text-muted small">
-                        Approval Status
+                        Account Status
                     </div>
 
-                    <?php if ((int)$user['is_approved'] === 1): ?>
+                    <?php
+
+                    $userStatus = $user['status'] ?? 'pending';
+
+                    if ($userStatus === 'active'):
+
+                    ?>
 
                         <span class="badge bg-success">
 
                             <i class="bi bi-check-circle me-1"></i>
 
-                            Approved
+                            Approved / Active
 
                         </span>
 
-                    <?php else: ?>
+                    <?php elseif ($userStatus === 'pending'): ?>
 
                         <span class="badge bg-warning text-dark">
 
                             <i class="bi bi-clock me-1"></i>
 
-                            Pending / Rejected
+                            Pending Approval
+
+                        </span>
+
+                    <?php else: ?>
+
+                        <span class="badge bg-danger">
+
+                            <i class="bi bi-x-circle me-1"></i>
+
+                            Inactive / Rejected
 
                         </span>
 
@@ -444,25 +485,29 @@ include __DIR__ . '/partials/header.php';
         </div>
 
 
-        <!-- =================================================
-             APPROVE / REJECT
-             ================================================= -->
+        <!-- APPROVE / REJECT -->
 
         <div class="card-footer bg-light">
 
             <div class="d-flex justify-content-end gap-2">
 
-                <?php if ((int)$user['is_approved'] === 1): ?>
+                <?php if ($userStatus === 'active'): ?>
 
-                    <form method="POST"
-                          onsubmit="return confirm('Reject this user?');">
+                    <form
+                        method="POST"
+                        onsubmit="return confirm('Reject this user?');"
+                    >
 
-                        <input type="hidden"
-                               name="action"
-                               value="reject_user">
+                        <input
+                            type="hidden"
+                            name="action"
+                            value="reject_user"
+                        >
 
-                        <button type="submit"
-                                class="btn btn-outline-danger">
+                        <button
+                            type="submit"
+                            class="btn btn-outline-danger"
+                        >
 
                             <i class="bi bi-x-circle me-1"></i>
 
@@ -476,12 +521,16 @@ include __DIR__ . '/partials/header.php';
 
                     <form method="POST">
 
-                        <input type="hidden"
-                               name="action"
-                               value="approve_user">
+                        <input
+                            type="hidden"
+                            name="action"
+                            value="approve_user"
+                        >
 
-                        <button type="submit"
-                                class="btn btn-success">
+                        <button
+                            type="submit"
+                            class="btn btn-success"
+                        >
 
                             <i class="bi bi-check-circle me-1"></i>
 
@@ -500,9 +549,7 @@ include __DIR__ . '/partials/header.php';
     </div>
 
 
-    <!-- =====================================================
-         BUSINESS ACCESS
-         ===================================================== -->
+    <!-- BUSINESS ACCESS -->
 
     <div class="card shadow-sm border-0 rounded-4">
 
@@ -527,17 +574,21 @@ include __DIR__ . '/partials/header.php';
 
         <form method="POST">
 
-            <input type="hidden"
-                   name="action"
-                   value="save_business_access">
+            <input
+                type="hidden"
+                name="action"
+                value="save_business_access"
+            >
 
 
             <?php if (empty($businesses)): ?>
 
                 <div class="p-4 text-center">
 
-                    <i class="bi bi-buildings text-muted"
-                       style="font-size: 3rem;"></i>
+                    <i
+                        class="bi bi-buildings text-muted"
+                        style="font-size:3rem;"
+                    ></i>
 
                     <p class="text-muted mt-3 mb-0">
 
@@ -562,7 +613,11 @@ include __DIR__ . '/partials/header.php';
                                 </th>
 
                                 <th>
-                                    Slug
+                                    Contact
+                                </th>
+
+                                <th>
+                                    Address
                                 </th>
 
                                 <th>
@@ -581,19 +636,18 @@ include __DIR__ . '/partials/header.php';
 
                         </thead>
 
+
                         <tbody>
 
                             <?php foreach ($businesses as $business): ?>
 
                                 <?php
 
-                                $businessId =
-                                    (int)$business['id'];
+                                $businessId = (int)$business['id'];
 
-                                $hasAccess =
-                                    isset(
-                                        $userBusinesses[$businessId]
-                                    );
+                                $hasAccess = isset(
+                                    $userBusinesses[$businessId]
+                                );
 
                                 $businessStatus =
                                     $business['status'] ?? 'active';
@@ -602,47 +656,85 @@ include __DIR__ . '/partials/header.php';
 
                                 <tr>
 
+                                    <!-- BUSINESS -->
+
                                     <td>
 
                                         <div class="fw-bold">
 
                                             <?= htmlspecialchars(
-                                                $business['business_name']
+                                                $business['name']
                                             ) ?>
 
                                         </div>
 
+                                        <?php if (!empty($business['email'])): ?>
+
+                                            <small class="text-muted">
+
+                                                <?= htmlspecialchars(
+                                                    $business['email']
+                                                ) ?>
+
+                                            </small>
+
+                                        <?php endif; ?>
+
                                     </td>
 
 
+                                    <!-- CONTACT -->
+
                                     <td>
 
-                                        <small class="text-muted">
+                                        <?php if (!empty($business['phone'])): ?>
+
+                                            <i class="bi bi-telephone me-1"></i>
 
                                             <?= htmlspecialchars(
-                                                $business['slug']
+                                                $business['phone']
                                             ) ?>
+
+                                        <?php else: ?>
+
+                                            <span class="text-muted">
+                                                N/A
+                                            </span>
+
+                                        <?php endif; ?>
+
+                                    </td>
+
+
+                                    <!-- ADDRESS -->
+
+                                    <td>
+
+                                        <small>
+
+                                            <?= !empty($business['address'])
+                                                ? htmlspecialchars(
+                                                    $business['address']
+                                                )
+                                                : 'N/A'
+                                            ?>
 
                                         </small>
 
                                     </td>
 
 
+                                    <!-- BUSINESS STATUS -->
+
                                     <td>
 
-                                        <?php if ($businessStatus === 'active'): ?>
+                                        <?php if (
+                                            $businessStatus === 'active'
+                                        ): ?>
 
                                             <span class="badge bg-success">
 
                                                 Active
-
-                                            </span>
-
-                                        <?php elseif ($businessStatus === 'suspended'): ?>
-
-                                            <span class="badge bg-warning text-dark">
-
-                                                Suspended
 
                                             </span>
 
@@ -659,6 +751,8 @@ include __DIR__ . '/partials/header.php';
                                     </td>
 
 
+                                    <!-- USER ROLE -->
+
                                     <td>
 
                                         <?php if ($hasAccess): ?>
@@ -666,8 +760,12 @@ include __DIR__ . '/partials/header.php';
                                             <span class="badge bg-primary">
 
                                                 <?= htmlspecialchars(
-                                                    ucfirst(
-                                                        $userBusinesses[$businessId]
+                                                    ucwords(
+                                                        str_replace(
+                                                            '_',
+                                                            ' ',
+                                                            $userBusinesses[$businessId]
+                                                        )
                                                     )
                                                 ) ?>
 
@@ -685,6 +783,8 @@ include __DIR__ . '/partials/header.php';
 
                                     </td>
 
+
+                                    <!-- ACCESS -->
 
                                     <td class="text-center">
 
@@ -731,8 +831,10 @@ include __DIR__ . '/partials/header.php';
 
                     <div class="d-flex justify-content-end">
 
-                        <button type="submit"
-                                class="btn btn-primary px-4">
+                        <button
+                            type="submit"
+                            class="btn btn-primary px-4"
+                        >
 
                             <i class="bi bi-save me-1"></i>
 

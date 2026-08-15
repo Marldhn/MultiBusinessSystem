@@ -23,11 +23,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_borrower'])) {
     if ($firstName !== '' && $lastName !== '') {
 
         $stmt = $pdo->prepare("
-            INSERT INTO loan_borrowers
-            (business_id, created_by, first_name, last_name, contact_no, address)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ");
-
+    INSERT INTO loan_borrowers
+    (business_id, created_by, first_name, last_name, phone, address)
+    VALUES (?, ?, ?, ?, ?, ?)
+");
         $stmt->execute([
             $businessId,
             $userId,

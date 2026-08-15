@@ -772,22 +772,6 @@ if (!$userInitial) {
                 class="dropdown-menu dropdown-menu-end loan-user-dropdown"
             >
 
-                <li>
-
-                    <a
-                        class="dropdown-item"
-                        href="index.php?page=settings"
-                    >
-
-                        <i
-                            class="bi bi-gear me-2 text-muted"
-                        ></i>
-
-                        Settings
-
-                    </a>
-
-                </li>
 
 
                 <li>

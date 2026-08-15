@@ -21,7 +21,7 @@ $stmt = $pdo->prepare("
         l.due_date,
         l.created_by,
         CONCAT(b.first_name, ' ', b.last_name) AS borrower_name,
-        b.contact_no AS contact_number,
+        b.phone AS contact_number,
         a.account_name
     FROM loan_collaterals c
     INNER JOIN loans l ON c.loan_id = l.id
