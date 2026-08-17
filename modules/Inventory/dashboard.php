@@ -437,7 +437,7 @@ body{
                         <div class="col">
 
                             <a
-                                href="index.php?page=inventory_products_create"
+                                href="index.php?page=inventory_products"
                                 class="quick-action">
 
                                 <div class="quick-action-icon bg-primary bg-opacity-10 text-primary">

@@ -30,12 +30,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['business_id'])) {
         $hasAccess = false;
         $businessRole = 'owner';
 
-        /*
-        |--------------------------------------------------------------------------
-        | CHECK BUSINESS ACCESS
-        |--------------------------------------------------------------------------
-        */
-
         if ($userRole === 'super_admin') {
 
             $hasAccess = true;
@@ -65,12 +59,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['business_id'])) {
             }
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | LOAD BUSINESS
-        |--------------------------------------------------------------------------
-        */
-
         if ($hasAccess) {
 
             $bStmt = $pdo->prepare("
@@ -87,52 +75,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['business_id'])) {
 
             if ($businessData) {
 
-                /*
-                |--------------------------------------------------------------------------
-                | SAVE BUSINESS SESSION
-                |--------------------------------------------------------------------------
-                */
-
                 $_SESSION['business_id'] = $businessData['id'];
                 $_SESSION['business_name'] = $businessData['name'];
                 $_SESSION['business_role'] = $businessRole;
 
-                /*
-                |--------------------------------------------------------------------------
-                | MODULE REDIRECT
-                |--------------------------------------------------------------------------
-                */
-
                 switch ($module) {
 
                     case 'loan':
-
                         header('Location: index.php?page=dashboard');
                         exit;
 
                     case 'inventory':
-
                         header('Location: index.php?page=inventory_dashboard');
                         exit;
 
                     case 'pos':
-
                         header('Location: index.php?page=pos_dashboard');
                         exit;
 
                     default:
-
                         $error = 'Invalid module selected.';
                         break;
                 }
 
             } else {
-
                 $error = 'Selected business is inactive or does not exist.';
             }
 
         } else {
-
             $error = 'You do not have permission to access this business.';
         }
     }
@@ -194,39 +164,31 @@ $pageTitle = 'Select Business - Multibusiness System';
 include __DIR__ . '/partials/header.php';
 ?>
 
-<div class="container py-5">
+<div class="workspace-page">
 
-```
-<div class="row justify-content-center">
+    <div class="workspace-container">
 
-    <div class="col-md-10 col-lg-9">
-
-        <!-- =====================================================
-             HEADER
-        ====================================================== -->
-
-        <div class="d-flex justify-content-between align-items-center mb-4">
+        <!-- HEADER -->
+        <div class="workspace-header">
 
             <div>
+                <div class="eyebrow">
+                    <i class="bi bi-grid-1x2-fill"></i>
+                    WORKSPACE
+                </div>
 
-                <h2 class="fw-bold mb-1">
-                    Select a Business
-                </h2>
+                <h1>Select your business</h1>
 
-                <p class="text-muted small mb-0">
-                    Choose the business workspace you want to access.
+                <p>
+                    Choose a business workspace to continue.
                 </p>
-
             </div>
 
             <?php if ($userRole === 'super_admin'): ?>
 
-                <a href="index.php?page=admin_portal"
-                   class="btn btn-outline-primary btn-sm fw-bold">
-
-                    <i class="bi bi-shield-lock me-1"></i>
+                <a href="index.php?page=admin_portal" class="admin-link">
+                    <i class="bi bi-shield-check"></i>
                     Admin Portal
-
                 </a>
 
             <?php endif; ?>
@@ -234,296 +196,226 @@ include __DIR__ . '/partials/header.php';
         </div>
 
 
-        <!-- =====================================================
-             ERROR
-        ====================================================== -->
-
+        <!-- ERROR -->
         <?php if ($error): ?>
 
-            <div class="alert alert-danger rounded-4 shadow-sm mb-4">
+            <div class="workspace-alert">
+                <div class="alert-icon">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                </div>
 
-                <i class="bi bi-exclamation-circle-fill me-2"></i>
-
-                <?= htmlspecialchars($error) ?>
-
+                <div>
+                    <strong>Unable to open workspace</strong>
+                    <span><?= htmlspecialchars($error) ?></span>
+                </div>
             </div>
 
         <?php endif; ?>
 
 
-        <!-- =====================================================
-             NO BUSINESSES
-        ====================================================== -->
-
+        <!-- BUSINESS LIST -->
         <?php if (empty($businesses)): ?>
 
-            <div class="card p-5 text-center shadow-sm rounded-4 border-0 bg-white">
+            <div class="empty-workspace">
 
-                <div class="text-muted mb-3"
-                     style="font-size:3rem;">
-
+                <div class="empty-icon">
                     <i class="bi bi-buildings"></i>
-
                 </div>
 
-                <h5 class="fw-bold text-dark">
-                    No Businesses Available
-                </h5>
+                <h3>No businesses available</h3>
 
-                <p class="text-muted small mb-0">
-                    You are not currently assigned to any active
-                    businesses. Please contact an administrator.
+                <p>
+                    You are not currently assigned to any active business.
+                    Please contact an administrator.
                 </p>
 
             </div>
 
         <?php else: ?>
 
-
-            <!-- =====================================================
-                 BUSINESS CARDS
-            ====================================================== -->
-
-            <div class="row g-4">
+            <div class="business-list">
 
                 <?php foreach ($businesses as $biz): ?>
 
                     <?php
 
                     $businessId = (int)$biz['id'];
+                    $businessName = strtolower(trim($biz['name']));
 
                     /*
                     |--------------------------------------------------------------------------
-                    | DETERMINE BUSINESS MODULE
+                    | DETERMINE MODULE
                     |--------------------------------------------------------------------------
-                    |
-                    | Current setup:
-                    |
-                    | Loan Management System
-                    | Inventory Management System
-                    | POS Management System
-                    |
                     */
-
-                    $businessName = strtolower(trim($biz['name']));
 
                     $module = 'loan';
 
-                    if (
-                        strpos($businessName, 'inventory') !== false
-                    ) {
-
+                    if (strpos($businessName, 'inventory') !== false) {
                         $module = 'inventory';
-
-                    } elseif (
-                        strpos($businessName, 'pos') !== false
-                    ) {
-
+                    } elseif (strpos($businessName, 'pos') !== false) {
                         $module = 'pos';
-
                     }
 
                     /*
                     |--------------------------------------------------------------------------
-                    | MODULE INFORMATION
+                    | MODULE DETAILS
                     |--------------------------------------------------------------------------
                     */
 
-                    if ($module === 'inventory') {
+                    switch ($module) {
 
-                        $moduleTitle = 'Inventory Management';
-                        $moduleDescription = 'Manage products, stock, categories, brands and suppliers.';
-                        $moduleIcon = 'bi-box-seam';
-                        $moduleButton = 'Open Inventory';
-                        $moduleButtonClass = 'btn-success';
-                        $moduleIconClass = 'bg-success bg-opacity-10 text-success';
+                        case 'inventory':
 
-                    } elseif ($module === 'pos') {
+                            $moduleTitle = 'Inventory Management';
+                            $moduleDescription = 'Products, stock, categories, brands and suppliers.';
+                            $moduleIcon = 'bi-box-seam';
+                            $moduleClass = 'inventory';
+                            $moduleButton = 'Open Inventory';
 
-                        $moduleTitle = 'POS Management';
-                        $moduleDescription = 'Manage sales, checkout, customers, products and transactions.';
-                        $moduleIcon = 'bi-cart3';
-                        $moduleButton = 'Open POS';
-                        $moduleButtonClass = 'btn-warning';
-                        $moduleIconClass = 'bg-warning bg-opacity-10 text-warning';
+                            break;
 
-                    } else {
+                        case 'pos':
 
-                        $moduleTitle = 'Loan Management';
-                        $moduleDescription = 'Manage borrowers, loans, payments, accounts and reports.';
-                        $moduleIcon = 'bi-cash-stack';
-                        $moduleButton = 'Open Loan Management';
-                        $moduleButtonClass = 'btn-primary';
-                        $moduleIconClass = 'bg-primary bg-opacity-10 text-primary';
+                            $moduleTitle = 'Point of Sale';
+                            $moduleDescription = 'Sales, checkout, customers and transactions.';
+                            $moduleIcon = 'bi-cart3';
+                            $moduleClass = 'pos';
+                            $moduleButton = 'Open POS';
+
+                            break;
+
+                        default:
+
+                            $moduleTitle = 'Loan Management';
+                            $moduleDescription = 'Borrowers, loans, payments, accounts and reports.';
+                            $moduleIcon = 'bi-cash-stack';
+                            $moduleClass = 'loan';
+                            $moduleButton = 'Open Loan Management';
+
+                            break;
                     }
 
                     ?>
 
-                    <div class="col-12">
+                    <div class="business-item">
 
-                        <div class="card shadow-sm rounded-4 border-0 business-card">
+                        <!-- BUSINESS HEADER -->
+                        <div class="business-main">
 
-                            <div class="card-body p-4">
+                            <div class="business-logo">
+                                <i class="bi bi-shop"></i>
+                            </div>
 
-                                <!-- =================================
-                                     BUSINESS INFORMATION
-                                ================================== -->
+                            <div class="business-info">
 
-                                <div class="d-flex flex-column flex-md-row
-                                            justify-content-between
-                                            align-items-md-start
-                                            gap-3">
+                                <div class="business-title-row">
 
-                                    <div class="d-flex align-items-start gap-3">
+                                    <h2>
+                                        <?= htmlspecialchars($biz['name']) ?>
+                                    </h2>
 
-                                        <div class="rounded-3 bg-primary
-                                                    bg-opacity-10
-                                                    text-primary
-                                                    p-3">
+                                    <?php if (!empty($biz['user_business_role'])): ?>
 
-                                            <i class="bi bi-shop"
-                                               style="font-size:1.5rem;">
-                                            </i>
+                                        <span class="role-badge">
+                                            <?= htmlspecialchars($biz['user_business_role']) ?>
+                                        </span>
 
-                                        </div>
-
-                                        <div>
-
-                                            <div class="d-flex align-items-center gap-2 flex-wrap">
-
-                                                <h5 class="fw-bold text-dark mb-0">
-
-                                                    <?= htmlspecialchars($biz['name']) ?>
-
-                                                </h5>
-
-                                                <?php if (!empty($biz['user_business_role'])): ?>
-
-                                                    <span class="badge bg-secondary text-uppercase"
-                                                          style="font-size:.65rem;">
-
-                                                        <?= htmlspecialchars($biz['user_business_role']) ?>
-
-                                                    </span>
-
-                                                <?php endif; ?>
-
-                                            </div>
-
-                                            <?php if (!empty($biz['email'])): ?>
-
-                                                <p class="text-muted small mb-1 mt-2">
-
-                                                    <i class="bi bi-envelope me-1"></i>
-
-                                                    <?= htmlspecialchars($biz['email']) ?>
-
-                                                </p>
-
-                                            <?php endif; ?>
-
-                                            <?php if (!empty($biz['phone'])): ?>
-
-                                                <p class="text-muted small mb-1">
-
-                                                    <i class="bi bi-telephone me-1"></i>
-
-                                                    <?= htmlspecialchars($biz['phone']) ?>
-
-                                                </p>
-
-                                            <?php endif; ?>
-
-                                            <?php if (!empty($biz['address'])): ?>
-
-                                                <p class="text-muted small mb-0">
-
-                                                    <i class="bi bi-geo-alt me-1"></i>
-
-                                                    <?= htmlspecialchars($biz['address']) ?>
-
-                                                </p>
-
-                                            <?php endif; ?>
-
-                                        </div>
-
-                                    </div>
+                                    <?php endif; ?>
 
                                 </div>
 
+                                <div class="business-meta">
 
-                                <!-- =================================
-                                     MODULE
-                                ================================== -->
+                                    <?php if (!empty($biz['email'])): ?>
 
-                                <div class="border-top mt-4 pt-4">
+                                        <span>
+                                            <i class="bi bi-envelope"></i>
+                                            <?= htmlspecialchars($biz['email']) ?>
+                                        </span>
 
-                                    <div class="card module-card border rounded-4">
+                                    <?php endif; ?>
 
-                                        <div class="card-body p-4">
+                                    <?php if (!empty($biz['phone'])): ?>
 
-                                            <div class="d-flex
-                                                        align-items-start
-                                                        gap-3
-                                                        mb-3">
+                                        <span>
+                                            <i class="bi bi-telephone"></i>
+                                            <?= htmlspecialchars($biz['phone']) ?>
+                                        </span>
 
-                                                <div class="module-icon <?= $moduleIconClass ?>">
+                                    <?php endif; ?>
 
-                                                    <i class="bi <?= $moduleIcon ?>"></i>
+                                    <?php if (!empty($biz['address'])): ?>
 
-                                                </div>
+                                        <span>
+                                            <i class="bi bi-geo-alt"></i>
+                                            <?= htmlspecialchars($biz['address']) ?>
+                                        </span>
 
-                                                <div>
-
-                                                    <h6 class="fw-bold mb-1">
-
-                                                        <?= htmlspecialchars($moduleTitle) ?>
-
-                                                    </h6>
-
-                                                    <p class="text-muted small mb-0">
-
-                                                        <?= htmlspecialchars($moduleDescription) ?>
-
-                                                    </p>
-
-                                                </div>
-
-                                            </div>
-
-
-                                            <form method="POST">
-
-                                                <input type="hidden"
-                                                       name="business_id"
-                                                       value="<?= $businessId ?>">
-
-                                                <input type="hidden"
-                                                       name="module"
-                                                       value="<?= htmlspecialchars($module) ?>">
-
-                                                <button type="submit"
-                                                        class="btn <?= $moduleButtonClass ?>
-                                                               w-100
-                                                               fw-bold
-                                                               rounded-3">
-
-                                                    <i class="bi bi-box-arrow-in-right me-1"></i>
-
-                                                    <?= htmlspecialchars($moduleButton) ?>
-
-                                                </button>
-
-                                            </form>
-
-                                        </div>
-
-                                    </div>
+                                    <?php endif; ?>
 
                                 </div>
 
                             </div>
+
+                            <div class="active-status">
+                                <span></span>
+                                Active
+                            </div>
+
+                        </div>
+
+
+                        <!-- MODULE -->
+                        <div class="module-row">
+
+                            <div class="module-left">
+
+                                <div class="module-symbol <?= $moduleClass ?>">
+                                    <i class="bi <?= $moduleIcon ?>"></i>
+                                </div>
+
+                                <div class="module-details">
+
+                                    <span class="module-label">
+                                        WORKSPACE MODULE
+                                    </span>
+
+                                    <h3>
+                                        <?= htmlspecialchars($moduleTitle) ?>
+                                    </h3>
+
+                                    <p>
+                                        <?= htmlspecialchars($moduleDescription) ?>
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+
+                            <form method="POST" class="module-form">
+
+                                <input
+                                    type="hidden"
+                                    name="business_id"
+                                    value="<?= $businessId ?>"
+                                >
+
+                                <input
+                                    type="hidden"
+                                    name="module"
+                                    value="<?= htmlspecialchars($module) ?>"
+                                >
+
+                                <button
+                                    type="submit"
+                                    class="open-button <?= $moduleClass ?>"
+                                >
+                                    <?= htmlspecialchars($moduleButton) ?>
+                                    <i class="bi bi-arrow-right"></i>
+                                </button>
+
+                            </form>
 
                         </div>
 
@@ -536,19 +428,12 @@ include __DIR__ . '/partials/header.php';
         <?php endif; ?>
 
 
-        <!-- =====================================================
-             SIGN OUT
-        ====================================================== -->
+        <!-- FOOTER -->
+        <div class="workspace-footer">
 
-        <div class="text-center mt-4">
-
-            <a href="index.php?page=logout"
-               class="text-danger small text-decoration-none fw-bold">
-
-                <i class="bi bi-box-arrow-right me-1"></i>
-
-                Sign Out
-
+            <a href="index.php?page=logout">
+                <i class="bi bi-box-arrow-right"></i>
+                Sign out
             </a>
 
         </div>
@@ -556,55 +441,495 @@ include __DIR__ . '/partials/header.php';
     </div>
 
 </div>
-```
 
-</div>
 
 <style>
 
-.business-card {
-    transition: transform .2s ease, box-shadow .2s ease;
+:root {
+    --workspace-bg: #f5f7fb;
+    --workspace-border: #e8ebf1;
+    --workspace-text: #172033;
+    --workspace-muted: #737b8c;
 }
 
-.business-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 30px rgba(0,0,0,.08) !important;
+.workspace-page {
+    min-height: calc(100vh - 70px);
+    background: var(--workspace-bg);
+    padding: 55px 20px 70px;
 }
 
-.module-card {
-    transition: transform .2s ease,
-                box-shadow .2s ease;
+.workspace-container {
+    max-width: 1000px;
+    margin: 0 auto;
 }
 
-.module-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 22px rgba(0,0,0,.08);
+/* HEADER */
+
+.workspace-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 25px;
+    margin-bottom: 38px;
 }
 
-.module-icon {
-    width: 48px;
-    height: 48px;
-    min-width: 48px;
-    border-radius: 14px;
+.eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: #64748b;
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .12em;
+    margin-bottom: 9px;
+}
+
+.workspace-header h1 {
+    margin: 0;
+    color: var(--workspace-text);
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -.035em;
+}
+
+.workspace-header p {
+    margin: 7px 0 0;
+    color: var(--workspace-muted);
+    font-size: .95rem;
+}
+
+.admin-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 15px;
+    border: 1px solid var(--workspace-border);
+    border-radius: 10px;
+    background: #fff;
+    color: #475569;
+    text-decoration: none;
+    font-size: .85rem;
+    font-weight: 700;
+    transition: .2s ease;
+}
+
+.admin-link:hover {
+    color: #2563eb;
+    border-color: #cbd5e1;
+    background: #f8fafc;
+}
+
+/* ALERT */
+
+.workspace-alert {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding: 15px 17px;
+    margin-bottom: 24px;
+    background: #fff;
+    border: 1px solid #fecaca;
+    border-radius: 12px;
+    color: #991b1b;
+}
+
+.alert-icon {
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.25rem;
+    border-radius: 9px;
+    background: #fef2f2;
+    color: #dc2626;
 }
 
-@media (max-width: 575.98px) {
+.workspace-alert strong,
+.workspace-alert span {
+    display: block;
+}
 
-    .container {
-        padding-left: 14px;
-        padding-right: 14px;
+.workspace-alert strong {
+    font-size: .85rem;
+}
+
+.workspace-alert span {
+    margin-top: 2px;
+    font-size: .8rem;
+    color: #b91c1c;
+}
+
+/* BUSINESS LIST */
+
+.business-list {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.business-item {
+    background: #fff;
+    border: 1px solid var(--workspace-border);
+    border-radius: 16px;
+    overflow: hidden;
+    transition:
+        transform .2s ease,
+        box-shadow .2s ease,
+        border-color .2s ease;
+}
+
+.business-item:hover {
+    transform: translateY(-2px);
+    border-color: #dce2eb;
+    box-shadow: 0 12px 35px rgba(15, 23, 42, .07);
+}
+
+/* BUSINESS INFO */
+
+.business-main {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 23px 25px;
+}
+
+.business-logo {
+    width: 52px;
+    height: 52px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 13px;
+    background: #eef4ff;
+    color: #2563eb;
+    font-size: 1.35rem;
+}
+
+.business-info {
+    min-width: 0;
+    flex: 1;
+}
+
+.business-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 9px;
+}
+
+.business-title-row h2 {
+    margin: 0;
+    color: var(--workspace-text);
+    font-size: 1.05rem;
+    font-weight: 750;
+}
+
+.role-badge {
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: #f1f5f9;
+    color: #64748b;
+    font-size: .63rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.business-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 13px;
+    margin-top: 7px;
+}
+
+.business-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #8a92a2;
+    font-size: .76rem;
+}
+
+.business-meta i {
+    color: #a0a8b6;
+}
+
+.active-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 9px;
+    border-radius: 7px;
+    background: #f0fdf4;
+    color: #15803d;
+    font-size: .68rem;
+    font-weight: 800;
+}
+
+.active-status span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #22c55e;
+}
+
+/* MODULE */
+
+.module-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 25px;
+    padding: 20px 25px;
+    background: #fafbfc;
+    border-top: 1px solid #edf0f4;
+}
+
+.module-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+}
+
+.module-symbol {
+    width: 46px;
+    height: 46px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 11px;
+    font-size: 1.15rem;
+}
+
+.module-symbol.loan {
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+.module-symbol.inventory {
+    background: #ecfdf5;
+    color: #059669;
+}
+
+.module-symbol.pos {
+    background: #fffbeb;
+    color: #d97706;
+}
+
+.module-details {
+    min-width: 0;
+}
+
+.module-label {
+    display: block;
+    margin-bottom: 3px;
+    color: #9aa2b1;
+    font-size: .6rem;
+    font-weight: 800;
+    letter-spacing: .09em;
+}
+
+.module-details h3 {
+    margin: 0;
+    color: #253047;
+    font-size: .9rem;
+    font-weight: 750;
+}
+
+.module-details p {
+    margin: 3px 0 0;
+    color: #8a92a2;
+    font-size: .76rem;
+}
+
+.module-form {
+    flex-shrink: 0;
+}
+
+.open-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    min-width: 165px;
+    padding: 10px 15px;
+    border: 0;
+    border-radius: 9px;
+    color: #fff;
+    font-size: .78rem;
+    font-weight: 750;
+    cursor: pointer;
+    transition: .2s ease;
+}
+
+.open-button.loan {
+    background: #2563eb;
+}
+
+.open-button.inventory {
+    background: #059669;
+}
+
+.open-button.pos {
+    background: #d97706;
+}
+
+.open-button:hover {
+    color: #fff;
+    transform: translateY(-1px);
+    filter: brightness(.94);
+}
+
+.open-button i {
+    transition: transform .2s ease;
+}
+
+.open-button:hover i {
+    transform: translateX(3px);
+}
+
+/* EMPTY */
+
+.empty-workspace {
+    padding: 70px 25px;
+    text-align: center;
+    background: #fff;
+    border: 1px solid var(--workspace-border);
+    border-radius: 16px;
+}
+
+.empty-icon {
+    width: 65px;
+    height: 65px;
+    margin: 0 auto 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    background: #f1f5f9;
+    color: #94a3b8;
+    font-size: 1.7rem;
+}
+
+.empty-workspace h3 {
+    margin: 0;
+    color: #263247;
+    font-size: 1.05rem;
+    font-weight: 750;
+}
+
+.empty-workspace p {
+    max-width: 420px;
+    margin: 8px auto 0;
+    color: #8992a2;
+    font-size: .82rem;
+    line-height: 1.6;
+}
+
+/* FOOTER */
+
+.workspace-footer {
+    text-align: center;
+    margin-top: 30px;
+}
+
+.workspace-footer a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #8b93a2;
+    font-size: .78rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition: .2s ease;
+}
+
+.workspace-footer a:hover {
+    color: #dc2626;
+}
+
+/* MOBILE */
+
+@media (max-width: 767.98px) {
+
+    .workspace-page {
+        padding: 35px 14px 50px;
     }
 
-    .business-card .card-body {
-        padding: 18px !important;
+    .workspace-header {
+        align-items: flex-start;
+        flex-direction: column;
+        margin-bottom: 27px;
     }
 
-    .module-card .card-body {
-        padding: 18px !important;
+    .workspace-header h1 {
+        font-size: 1.65rem;
+    }
+
+    .admin-link {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .business-main {
+        align-items: flex-start;
+        padding: 20px;
+    }
+
+    .active-status {
+        display: none;
+    }
+
+    .business-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+    }
+
+    .module-row {
+        align-items: stretch;
+        flex-direction: column;
+        padding: 18px 20px 20px;
+        gap: 17px;
+    }
+
+    .module-details p {
+        line-height: 1.5;
+    }
+
+    .module-form {
+        width: 100%;
+    }
+
+    .open-button {
+        width: 100%;
+    }
+
+}
+
+@media (max-width: 430px) {
+
+    .business-main {
+        gap: 12px;
+    }
+
+    .business-logo {
+        width: 45px;
+        height: 45px;
+        font-size: 1.15rem;
+    }
+
+    .business-title-row h2 {
+        font-size: .95rem;
+    }
+
+    .business-meta span {
+        font-size: .7rem;
     }
 
 }

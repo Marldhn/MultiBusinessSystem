@@ -1,4 +1,3 @@
-
 <?php
 $pdo = Database::getConnection();
 
@@ -10,97 +9,127 @@ if (!$businessId || !$userId) {
     exit;
 }
 
-$upcomingDays = isset($_GET['upcoming_days']) ? (int) $_GET['upcoming_days'] : 15;
+$businessId = (int)$businessId;
+$userId = (int)$userId;
+
+$upcomingDays = isset($_GET['upcoming_days']) ? (int)$_GET['upcoming_days'] : 15;
 
 if (!in_array($upcomingDays, [15, 30], true)) {
     $upcomingDays = 15;
 }
 
+
 /*
 |--------------------------------------------------------------------------
 | ACTIVE LOANS
 |--------------------------------------------------------------------------
-| Business-wide data.
-| Do NOT filter by created_by because all users inside the same business
-| should be able to see the business loans.
+| Only loans created by the currently logged-in user
+| inside the currently selected business.
 */
+
 $activeLoansStmt = $pdo->prepare("
     SELECT
         COUNT(*) AS total_active,
         COALESCE(SUM(total_payable), 0) AS total_amount
     FROM loans
     WHERE business_id = ?
+    AND created_by = ?
     AND status = 'active'
 ");
 
-$activeLoansStmt->execute([$businessId]);
+$activeLoansStmt->execute([
+    $businessId,
+    $userId
+]);
 
 $activeLoansData = $activeLoansStmt->fetch(PDO::FETCH_ASSOC);
+
 
 /*
 |--------------------------------------------------------------------------
 | BORROWERS
 |--------------------------------------------------------------------------
-| FIX:
-| Removed created_by filter.
-| All users belonging to the same business can see all borrowers
-| belonging to that business.
+| Only borrowers created by the currently logged-in user.
 */
+
 $borrowersStmt = $pdo->prepare("
     SELECT COUNT(*) AS total_borrowers
     FROM loan_borrowers
     WHERE business_id = ?
+    AND created_by = ?
 ");
 
-$borrowersStmt->execute([$businessId]);
+$borrowersStmt->execute([
+    $businessId,
+    $userId
+]);
 
 $borrowersData = $borrowersStmt->fetch(PDO::FETCH_ASSOC);
+
 
 /*
 |--------------------------------------------------------------------------
 | ACCOUNTS
 |--------------------------------------------------------------------------
-| Business-wide accounts.
+| Only accounts created by the currently logged-in user.
 */
+
 $accountsStmt = $pdo->prepare("
     SELECT COALESCE(SUM(balance), 0) AS total_funds
     FROM loan_accounts
     WHERE business_id = ?
+    AND created_by = ?
 ");
 
-$accountsStmt->execute([$businessId]);
+$accountsStmt->execute([
+    $businessId,
+    $userId
+]);
 
 $accountsData = $accountsStmt->fetch(PDO::FETCH_ASSOC);
 
+
 /*
 |--------------------------------------------------------------------------
-| RECENT TRANSACTIONS
+| RECENT ACCOUNT TRANSACTIONS
 |--------------------------------------------------------------------------
-| Removed created_by filter from the account.
-| Transactions are shown for accounts belonging to the current business.
+| Only transactions created by the currently logged-in user.
+|
+| The account is also checked against the current business/user.
 */
+
 $txStmt = $pdo->prepare("
     SELECT t.*
     FROM loan_account_transactions t
     INNER JOIN loan_accounts a
         ON a.id = t.account_id
         AND a.business_id = t.business_id
+        AND a.created_by = ?
     WHERE t.business_id = ?
+    AND t.created_by = ?
     ORDER BY t.created_at DESC
     LIMIT 5
 ");
 
-$txStmt->execute([$businessId]);
+$txStmt->execute([
+    $userId,
+    $businessId,
+    $userId
+]);
 
 $recentTransactions = $txStmt->fetchAll(PDO::FETCH_ASSOC);
+
 
 /*
 |--------------------------------------------------------------------------
 | UPCOMING PAYMENTS
 |--------------------------------------------------------------------------
-| Removed l.created_by filter.
-| Any loan belonging to this business is visible to the business users.
+| Only schedules belonging to loans created by the current user.
+|
+| We filter l.created_by instead of s.created_by because the payment
+| schedule belongs to the user's loan.
 */
+
 $upcomingPaymentsStmt = $pdo->prepare("
     SELECT
         s.id AS schedule_id,
@@ -115,10 +144,13 @@ $upcomingPaymentsStmt = $pdo->prepare("
     INNER JOIN loans l
         ON s.loan_id = l.id
         AND l.business_id = s.business_id
+        AND l.created_by = ?
     INNER JOIN loan_borrowers b
         ON l.borrower_id = b.id
         AND b.business_id = l.business_id
+        AND b.created_by = ?
     WHERE l.business_id = ?
+    AND l.created_by = ?
     AND l.status = 'active'
     AND s.status IN ('unpaid', 'partially_paid')
     AND s.due_date >= CURDATE()
@@ -128,17 +160,23 @@ $upcomingPaymentsStmt = $pdo->prepare("
 ");
 
 $upcomingPaymentsStmt->execute([
+    $userId,
+    $userId,
     $businessId,
+    $userId,
     $upcomingDays
 ]);
 
 $upcomingPayments = $upcomingPaymentsStmt->fetchAll(PDO::FETCH_ASSOC);
 
+
 /*
 |--------------------------------------------------------------------------
 | OVERDUE PAYMENTS
 |--------------------------------------------------------------------------
+| Only overdue schedules belonging to the current user's loans.
 */
+
 $overduePaymentsStmt = $pdo->prepare("
     SELECT
         s.id AS schedule_id,
@@ -153,10 +191,13 @@ $overduePaymentsStmt = $pdo->prepare("
     INNER JOIN loans l
         ON s.loan_id = l.id
         AND l.business_id = s.business_id
+        AND l.created_by = ?
     INNER JOIN loan_borrowers b
         ON l.borrower_id = b.id
         AND b.business_id = l.business_id
+        AND b.created_by = ?
     WHERE l.business_id = ?
+    AND l.created_by = ?
     AND l.status IN ('active', 'overdue')
     AND s.status IN ('unpaid', 'partially_paid', 'overdue')
     AND s.due_date < CURDATE()
@@ -164,12 +205,30 @@ $overduePaymentsStmt = $pdo->prepare("
     LIMIT 20
 ");
 
-$overduePaymentsStmt->execute([$businessId]);
+$overduePaymentsStmt->execute([
+    $userId,
+    $userId,
+    $businessId,
+    $userId
+]);
 
 $overduePayments = $overduePaymentsStmt->fetchAll(PDO::FETCH_ASSOC);
 
-$upcomingTotal = array_sum(array_column($upcomingPayments, 'amount_due'));
-$overdueTotal = array_sum(array_column($overduePayments, 'amount_due'));
+
+/*
+|--------------------------------------------------------------------------
+| TOTALS
+|--------------------------------------------------------------------------
+*/
+
+$upcomingTotal = array_sum(
+    array_column($upcomingPayments, 'amount_due')
+);
+
+$overdueTotal = array_sum(
+    array_column($overduePayments, 'amount_due')
+);
+
 
 $activePage = 'dashboard';
 $pageTitle = 'Dashboard - Loan Management';

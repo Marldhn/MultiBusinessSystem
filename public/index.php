@@ -209,9 +209,16 @@ switch ($page) {
         break;
 
 
-             case 'edit_loan':
-   require_once __DIR__ . '/../modules/LoanManagement/loans/edit.php';    break;
+    case 'edit_loan':
 
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/LoanManagement/loans/edit.php';
+
+        break;
 
 
     // =====================================================
@@ -247,7 +254,7 @@ switch ($page) {
 
 
     // =====================================================
-    // REPORTS
+    // LOAN REPORTS
     // =====================================================
 
     case 'reports':
@@ -334,8 +341,6 @@ switch ($page) {
         break;
 
 
-   
-
     // =====================================================
     // LOGOUT
     // =====================================================
@@ -349,11 +354,314 @@ switch ($page) {
         exit;
 
 
-        // =====================================================
-// INVENTORY DASHBOARD
-// =====================================================
+    // =====================================================
+    // INVENTORY DASHBOARD
+    // =====================================================
 
-case 'inventory_dashboard':
+    case 'inventory_dashboard':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (!isset($_SESSION['business_id'])) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/Inventory/dashboard.php';
+
+        break;
+
+
+    // =====================================================
+    // INVENTORY PRODUCTS
+    // =====================================================
+
+    case 'inventory_products':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (!isset($_SESSION['business_id'])) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/Inventory/product/index.php';
+
+        break;
+
+
+    // =====================================================
+    // INVENTORY PRODUCT DETAILS
+    // =====================================================
+
+    case 'inventory_product_details':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (!isset($_SESSION['business_id'])) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/Inventory/product/details.php';
+
+        break;
+
+
+    // =====================================================
+    // INVENTORY CATEGORIES
+    // =====================================================
+
+    case 'inventory_categories':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (!isset($_SESSION['business_id'])) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/Inventory/categories/index.php';
+
+        break;
+
+
+    // =====================================================
+    // INVENTORY BRANDS
+    // =====================================================
+
+    case 'inventory_brands':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (!isset($_SESSION['business_id'])) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/Inventory/brands/index.php';
+
+        break;
+
+
+    // =====================================================
+    // INVENTORY SUPPLIERS
+    // =====================================================
+
+    case 'inventory_suppliers':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (!isset($_SESSION['business_id'])) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/Inventory/suppliers/index.php';
+
+        break;
+
+
+    // =====================================================
+    // INVENTORY STOCK
+    // =====================================================
+
+    case 'inventory_stock':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (!isset($_SESSION['business_id'])) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/Inventory/stocks/index.php';
+
+        break;
+
+
+    // =====================================================
+    // INVENTORY STOCK HISTORY
+    // =====================================================
+
+    case 'inventory_stock_history':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (!isset($_SESSION['business_id'])) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/Inventory/stocks/stockhistory.php';
+
+        break;
+
+
+    // =====================================================
+    // INVENTORY REPORTS
+    // =====================================================
+
+    case 'inventory_reports':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (!isset($_SESSION['business_id'])) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/Inventory/reports/index.php';
+
+        break;
+
+
+    // =====================================================
+    // POS DASHBOARD
+    // =====================================================
+
+
+    case 'pos_dashboard':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (!isset($_SESSION['business_id'])) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/POS/dashboard.php';
+
+        break;
+
+
+
+
+    // =====================================================
+    // POS CUSTOMER MODULE
+    // =====================================================
+
+
+        
+    case 'pos_customers':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (!isset($_SESSION['business_id'])) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/POS/customers/index.php';
+
+        break;
+
+           // =====================================================
+    // POS PRODUCT MODULE
+    // =====================================================
+
+
+        
+    case 'pos_products':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (!isset($_SESSION['business_id'])) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/POS/products/index.php';
+
+        break;
+
+
+             // =====================================================
+    // POS INVENTORY MODULE
+    // =====================================================
+
+
+        
+    case 'pos_stock':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (!isset($_SESSION['business_id'])) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/POS/products/inventory.php';
+
+        break;
+
+        // =====================================================
+    // POS NEW SALE MODULE
+    // =====================================================
+
+
+        
+    case 'pos_sales':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (!isset($_SESSION['business_id'])) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/POS/sale/sale.php';
+
+        break;
+
+        // =====================================================
+    // POS  SALE TRANSACTION MODULE
+    // =====================================================
+
+
+case 'pos_transactions':
 
     if (!isset($_SESSION['user_id'])) {
         header('Location: index.php?page=login');
@@ -365,9 +673,12 @@ case 'inventory_dashboard':
         exit;
     }
 
-    require_once __DIR__ . '/../modules/Inventory/dashboard.php';
+    require_once __DIR__ . '/../modules/POS/sale/saletransaction.php';
 
     break;
+
+
+
 
 
     // =====================================================
