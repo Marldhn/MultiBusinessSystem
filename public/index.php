@@ -209,6 +209,11 @@ switch ($page) {
         break;
 
 
+             case 'edit_loan':
+   require_once __DIR__ . '/../modules/LoanManagement/loans/edit.php';    break;
+
+
+
     // =====================================================
     // PAYMENTS
     // =====================================================
@@ -328,6 +333,8 @@ switch ($page) {
 
         break;
 
+
+   
 
     // =====================================================
     // LOGOUT
