@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3306
--- Generation Time: Aug 17, 2026 at 02:32 AM
+-- Generation Time: Aug 17, 2026 at 01:13 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -43,7 +43,9 @@ CREATE TABLE `businesses` (
 --
 
 INSERT INTO `businesses` (`id`, `name`, `email`, `phone`, `address`, `status`, `created_at`, `updated_at`) VALUES
-(1, 'My First Business', 'owner@gmail.com', '', '', 'active', '2026-08-14 23:48:06', NULL);
+(1, 'Loan Management System', 'owner@gmail.com', '', '', 'active', '2026-08-14 23:48:06', '2026-08-17 10:21:08'),
+(2, 'Inventory Management System', 'inventory@gmail.com', NULL, NULL, 'active', '2026-08-17 10:22:18', NULL),
+(3, 'POS Management', 'POS@gmail.com', NULL, NULL, 'active', '2026-08-17 10:27:37', NULL);
 
 -- --------------------------------------------------------
 
@@ -68,7 +70,9 @@ INSERT INTO `business_users` (`id`, `business_id`, `user_id`, `role`, `status`, 
 (1, 1, 2, 'owner', 'active', '2026-08-14 23:48:15'),
 (2, 1, 3, 'admin', 'active', '2026-08-15 01:02:36'),
 (3, 1, 4, 'admin', 'active', '2026-08-15 01:04:14'),
-(4, 1, 5, 'admin', 'active', '2026-08-16 21:17:06');
+(4, 1, 5, 'admin', 'active', '2026-08-16 21:17:06'),
+(6, 2, 4, 'admin', 'active', '2026-08-17 10:27:46'),
+(7, 3, 4, 'admin', 'active', '2026-08-17 10:27:46');
 
 -- --------------------------------------------------------
 
@@ -114,7 +118,7 @@ INSERT INTO `loans` (`id`, `business_id`, `created_by`, `account_id`, `reference
 (4, 1, 1, 1, NULL, 1, 500.00, 0.00, 500.00, '2026-08-15', '2026-12-15', 4, 'months', 'installment', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 125.00, 'active', '2026-08-15 00:01:01', NULL),
 (5, 1, 1, 1, NULL, 1, 500.00, 0.00, 500.00, '2026-08-15', '2026-12-15', 4, 'months', 'installment', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 125.00, 'active', '2026-08-15 00:06:09', NULL),
 (6, 1, 1, 1, NULL, 1, 500.00, 100.00, 1000.00, '2026-08-17', '2026-08-20', 3, 'days', 'lump_sum', 0, 'fixed', 0.00, 'one_time', 0, 'daily', NULL, 0.00, 'active', '2026-08-15 00:21:50', '2026-08-17 00:07:10'),
-(7, 1, 1, 1, NULL, 1, 100.00, 0.00, 130.00, '2026-08-14', '2026-08-15', 1, 'days', 'installment', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 100.00, 'active', '2026-08-16 23:30:34', '2026-08-17 00:29:15'),
+(7, 1, 1, 1, NULL, 1, 100.00, 0.00, 130.00, '2026-08-14', '2026-08-15', 1, 'days', 'installment', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 100.00, 'overdue', '2026-08-16 23:30:34', '2026-08-17 07:49:19'),
 (8, 1, 1, 1, NULL, 1, 1000.00, 10.00, 1100.00, '2026-08-17', '2026-08-24', 7, 'days', 'lump_sum', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 1100.00, 'active', '2026-08-17 00:14:51', NULL);
 
 -- --------------------------------------------------------
@@ -222,7 +226,8 @@ CREATE TABLE `loan_borrowers` (
 --
 
 INSERT INTO `loan_borrowers` (`id`, `business_id`, `created_by`, `first_name`, `middle_name`, `last_name`, `email`, `phone`, `address`, `date_of_birth`, `occupation`, `status`, `created_at`, `updated_at`) VALUES
-(1, 1, 1, 'Marldohn', NULL, 'Rubinos', NULL, '09061941138', 'Jakosalem Street', NULL, NULL, 'active', '2026-08-14 23:54:09', NULL);
+(1, 1, 1, 'Marldohn', NULL, 'Rubinos', NULL, '09061941138', 'Jakosalem Street', NULL, NULL, 'active', '2026-08-14 23:54:09', NULL),
+(2, 1, 1, 'Dondi', NULL, 'Rubinos', NULL, '12321312', 'fwq', NULL, NULL, 'active', '2026-08-17 08:01:32', NULL);
 
 -- --------------------------------------------------------
 
@@ -380,9 +385,9 @@ INSERT INTO `loan_schedules` (`id`, `business_id`, `loan_id`, `installment_numbe
 (12, 1, 5, 0, '2026-10-15', 125.00, 0.00, 125.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-15 00:06:09', '2026-08-16 21:20:21'),
 (13, 1, 5, 0, '2026-11-15', 125.00, 0.00, 125.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-15 00:06:09', '2026-08-16 21:20:21'),
 (14, 1, 5, 0, '2026-12-15', 125.00, 0.00, 125.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-15 00:06:09', '2026-08-16 21:20:21'),
-(19, 1, 7, 0, '2026-09-14', 100.00, 0.00, 0.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-16 23:30:34', NULL),
 (29, 1, 6, 1, '2026-08-20', 1000.00, 0.00, 1000.00, NULL, 0.00, 1000.00, 'unpaid', '2026-08-17 00:07:10', '2026-08-17 00:07:10'),
-(30, 1, 8, 0, '2026-08-24', 1100.00, 0.00, 0.00, NULL, 0.00, 0.00, 'partially_paid', '2026-08-17 00:14:51', '2026-08-17 00:19:04');
+(30, 1, 8, 0, '2026-08-24', 1100.00, 0.00, 0.00, NULL, 0.00, 0.00, 'partially_paid', '2026-08-17 00:14:51', '2026-08-17 00:19:04'),
+(32, 1, 7, 1, '2026-08-15', 130.00, 0.00, 130.00, NULL, 0.00, 130.00, 'overdue', '2026-08-17 07:49:19', '2026-08-17 07:49:19');
 
 -- --------------------------------------------------------
 
@@ -549,13 +554,13 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT for table `businesses`
 --
 ALTER TABLE `businesses`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `business_users`
 --
 ALTER TABLE `business_users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `loans`
@@ -585,7 +590,7 @@ ALTER TABLE `loan_account_transfers`
 -- AUTO_INCREMENT for table `loan_borrowers`
 --
 ALTER TABLE `loan_borrowers`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `loan_collaterals`
@@ -621,7 +626,7 @@ ALTER TABLE `loan_penalties`
 -- AUTO_INCREMENT for table `loan_schedules`
 --
 ALTER TABLE `loan_schedules`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=31;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=33;
 
 --
 -- AUTO_INCREMENT for table `users`

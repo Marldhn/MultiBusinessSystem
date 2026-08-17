@@ -349,6 +349,27 @@ switch ($page) {
         exit;
 
 
+        // =====================================================
+// INVENTORY DASHBOARD
+// =====================================================
+
+case 'inventory_dashboard':
+
+    if (!isset($_SESSION['user_id'])) {
+        header('Location: index.php?page=login');
+        exit;
+    }
+
+    if (!isset($_SESSION['business_id'])) {
+        header('Location: index.php?page=select_business');
+        exit;
+    }
+
+    require_once __DIR__ . '/../modules/Inventory/dashboard.php';
+
+    break;
+
+
     // =====================================================
     // 404
     // =====================================================
