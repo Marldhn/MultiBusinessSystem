@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3306
--- Generation Time: Aug 15, 2026 at 03:39 AM
+-- Generation Time: Aug 17, 2026 at 02:32 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -67,7 +67,8 @@ CREATE TABLE `business_users` (
 INSERT INTO `business_users` (`id`, `business_id`, `user_id`, `role`, `status`, `created_at`) VALUES
 (1, 1, 2, 'owner', 'active', '2026-08-14 23:48:15'),
 (2, 1, 3, 'admin', 'active', '2026-08-15 01:02:36'),
-(3, 1, 4, 'admin', 'active', '2026-08-15 01:04:14');
+(3, 1, 4, 'admin', 'active', '2026-08-15 01:04:14'),
+(4, 1, 5, 'admin', 'active', '2026-08-16 21:17:06');
 
 -- --------------------------------------------------------
 
@@ -90,6 +91,11 @@ CREATE TABLE `loans` (
   `term_days` int(11) DEFAULT NULL,
   `term_unit` enum('days','weeks','months','years') NOT NULL DEFAULT 'months',
   `payment_type` enum('installment','lump_sum') NOT NULL DEFAULT 'installment',
+  `penalty_enabled` tinyint(1) NOT NULL DEFAULT 0,
+  `penalty_type` enum('fixed','percentage') NOT NULL DEFAULT 'fixed',
+  `penalty_amount` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `penalty_frequency` enum('one_time','daily') NOT NULL DEFAULT 'one_time',
+  `penalty_grace_period` int(11) NOT NULL DEFAULT 0,
   `payment_frequency` enum('daily','weekly','biweekly','monthly','quarterly','yearly') DEFAULT NULL,
   `number_of_payments` int(11) DEFAULT NULL,
   `fixed_payment_amount` decimal(12,2) DEFAULT NULL,
@@ -102,12 +108,14 @@ CREATE TABLE `loans` (
 -- Dumping data for table `loans`
 --
 
-INSERT INTO `loans` (`id`, `business_id`, `created_by`, `account_id`, `reference_number`, `borrower_id`, `principal_amount`, `interest_rate`, `total_payable`, `loan_date`, `due_date`, `term_days`, `term_unit`, `payment_type`, `payment_frequency`, `number_of_payments`, `fixed_payment_amount`, `status`, `created_at`, `updated_at`) VALUES
-(2, 1, 1, 1, '123123', 1, 1000.00, 0.00, 1000.00, '2026-08-15', '2026-08-30', 15, 'days', 'installment', 'monthly', NULL, 1000.00, 'completed', '2026-08-14 23:59:04', '2026-08-15 00:03:03'),
-(3, 1, 1, 1, NULL, 1, 1000.00, 0.00, 1000.00, '2026-08-15', '2026-12-15', 4, 'months', 'installment', 'monthly', NULL, 250.00, 'active', '2026-08-15 00:00:52', NULL),
-(4, 1, 1, 1, NULL, 1, 500.00, 0.00, 500.00, '2026-08-15', '2026-12-15', 4, 'months', 'installment', 'monthly', NULL, 125.00, 'active', '2026-08-15 00:01:01', NULL),
-(5, 1, 1, 1, NULL, 1, 500.00, 0.00, 500.00, '2026-08-15', '2026-12-15', 4, 'months', 'installment', 'monthly', NULL, 125.00, 'active', '2026-08-15 00:06:09', NULL),
-(6, 1, 1, 1, NULL, 1, 500.00, 0.00, 500.00, '2026-08-15', '2026-12-15', 4, 'months', 'installment', 'monthly', NULL, 125.00, 'active', '2026-08-15 00:21:50', NULL);
+INSERT INTO `loans` (`id`, `business_id`, `created_by`, `account_id`, `reference_number`, `borrower_id`, `principal_amount`, `interest_rate`, `total_payable`, `loan_date`, `due_date`, `term_days`, `term_unit`, `payment_type`, `penalty_enabled`, `penalty_type`, `penalty_amount`, `penalty_frequency`, `penalty_grace_period`, `payment_frequency`, `number_of_payments`, `fixed_payment_amount`, `status`, `created_at`, `updated_at`) VALUES
+(2, 1, 1, 1, '123123', 1, 1000.00, 0.00, 1000.00, '2026-08-15', '2026-08-30', 15, 'days', 'installment', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 1000.00, 'completed', '2026-08-14 23:59:04', '2026-08-15 00:03:03'),
+(3, 1, 1, 1, NULL, 1, 1000.00, 0.00, 1000.00, '2026-08-15', '2026-12-15', 4, 'months', 'installment', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 250.00, 'active', '2026-08-15 00:00:52', NULL),
+(4, 1, 1, 1, NULL, 1, 500.00, 0.00, 500.00, '2026-08-15', '2026-12-15', 4, 'months', 'installment', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 125.00, 'active', '2026-08-15 00:01:01', NULL),
+(5, 1, 1, 1, NULL, 1, 500.00, 0.00, 500.00, '2026-08-15', '2026-12-15', 4, 'months', 'installment', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 125.00, 'active', '2026-08-15 00:06:09', NULL),
+(6, 1, 1, 1, NULL, 1, 500.00, 100.00, 1000.00, '2026-08-17', '2026-08-20', 3, 'days', 'lump_sum', 0, 'fixed', 0.00, 'one_time', 0, 'daily', NULL, 0.00, 'active', '2026-08-15 00:21:50', '2026-08-17 00:07:10'),
+(7, 1, 1, 1, NULL, 1, 100.00, 0.00, 130.00, '2026-08-14', '2026-08-15', 1, 'days', 'installment', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 100.00, 'active', '2026-08-16 23:30:34', '2026-08-17 00:29:15'),
+(8, 1, 1, 1, NULL, 1, 1000.00, 10.00, 1100.00, '2026-08-17', '2026-08-24', 7, 'days', 'lump_sum', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 1100.00, 'active', '2026-08-17 00:14:51', NULL);
 
 -- --------------------------------------------------------
 
@@ -132,7 +140,7 @@ CREATE TABLE `loan_accounts` (
 --
 
 INSERT INTO `loan_accounts` (`id`, `business_id`, `created_by`, `account_name`, `account_type`, `balance`, `status`, `created_at`, `updated_at`) VALUES
-(1, 1, 1, 'Gcash', 'cash', 7500.00, 'active', '2026-08-14 23:54:23', '2026-08-15 00:21:50');
+(1, 1, 1, 'Gcash', 'cash', 6500.00, 'active', '2026-08-14 23:54:23', '2026-08-17 00:19:04');
 
 -- --------------------------------------------------------
 
@@ -163,7 +171,10 @@ INSERT INTO `loan_account_transactions` (`id`, `business_id`, `created_by`, `acc
 (3, 1, NULL, 1, NULL, NULL, 'DEBIT', 500.00, 'Loan #4 disbursement', '2026-08-15 00:01:01'),
 (4, 1, NULL, 1, NULL, NULL, 'CREDIT', 1000.00, 'Payment received for Loan #2', '2026-08-15 00:03:03'),
 (5, 1, NULL, 1, NULL, NULL, 'DEBIT', 500.00, 'Loan #5 disbursement', '2026-08-15 00:06:09'),
-(6, 1, NULL, 1, NULL, NULL, 'DEBIT', 500.00, 'Loan #6 disbursement', '2026-08-15 00:21:50');
+(6, 1, NULL, 1, NULL, NULL, 'DEBIT', 500.00, 'Loan #6 disbursement', '2026-08-15 00:21:50'),
+(7, 1, NULL, 1, NULL, NULL, 'DEBIT', 100.00, 'Loan #7 disbursement', '2026-08-16 23:30:34'),
+(8, 1, NULL, 1, NULL, NULL, 'DEBIT', 1000.00, 'Loan #8 disbursement', '2026-08-17 00:14:51'),
+(9, 1, NULL, 1, NULL, NULL, 'CREDIT', 100.00, 'Payment received for Loan #8', '2026-08-17 00:19:04');
 
 -- --------------------------------------------------------
 
@@ -298,7 +309,8 @@ CREATE TABLE `loan_payments` (
 --
 
 INSERT INTO `loan_payments` (`id`, `business_id`, `created_by`, `loan_id`, `schedule_id`, `account_id`, `payment_amount`, `payment_date`, `notes`, `created_at`) VALUES
-(2, 1, NULL, 2, NULL, 1, 1000.00, '2026-08-15', '', '2026-08-15 00:03:03');
+(2, 1, NULL, 2, NULL, 1, 1000.00, '2026-08-15', '', '2026-08-15 00:03:03'),
+(3, 1, NULL, 8, NULL, 1, 100.00, '2026-08-17', '', '2026-08-17 00:19:04');
 
 -- --------------------------------------------------------
 
@@ -319,6 +331,14 @@ CREATE TABLE `loan_penalties` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `loan_penalties`
+--
+
+INSERT INTO `loan_penalties` (`id`, `business_id`, `loan_id`, `schedule_id`, `amount`, `reason`, `penalty_date`, `status`, `created_by`, `created_at`) VALUES
+(1, 1, 7, NULL, 15.00, 'Late Payment', '2026-08-17', 'unpaid', 1, '2026-08-16 23:31:38'),
+(2, 1, 7, NULL, 15.00, 'Late', '2026-08-17', 'unpaid', 1, '2026-08-17 00:29:15');
+
 -- --------------------------------------------------------
 
 --
@@ -332,6 +352,9 @@ CREATE TABLE `loan_schedules` (
   `installment_number` int(11) NOT NULL,
   `due_date` date NOT NULL,
   `amount_due` decimal(12,2) NOT NULL DEFAULT 0.00,
+  `penalty_amount` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `total_due` decimal(15,2) NOT NULL DEFAULT 0.00,
+  `penalty_updated_at` datetime DEFAULT NULL,
   `amount_paid` decimal(12,2) NOT NULL DEFAULT 0.00,
   `balance_due` decimal(12,2) NOT NULL DEFAULT 0.00,
   `status` enum('unpaid','partially_paid','paid','overdue') NOT NULL DEFAULT 'unpaid',
@@ -343,24 +366,23 @@ CREATE TABLE `loan_schedules` (
 -- Dumping data for table `loan_schedules`
 --
 
-INSERT INTO `loan_schedules` (`id`, `business_id`, `loan_id`, `installment_number`, `due_date`, `amount_due`, `amount_paid`, `balance_due`, `status`, `created_at`, `updated_at`) VALUES
-(2, 1, 2, 0, '2026-09-15', 1000.00, 0.00, 0.00, 'paid', '2026-08-14 23:59:04', '2026-08-15 00:03:03'),
-(3, 1, 3, 0, '2026-09-15', 250.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:00:52', NULL),
-(4, 1, 3, 0, '2026-10-15', 250.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:00:52', NULL),
-(5, 1, 3, 0, '2026-11-15', 250.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:00:52', NULL),
-(6, 1, 3, 0, '2026-12-15', 250.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:00:52', NULL),
-(7, 1, 4, 0, '2026-09-15', 125.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:01:01', NULL),
-(8, 1, 4, 0, '2026-10-15', 125.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:01:01', NULL),
-(9, 1, 4, 0, '2026-11-15', 125.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:01:01', NULL),
-(10, 1, 4, 0, '2026-12-15', 125.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:01:01', NULL),
-(11, 1, 5, 0, '2026-09-15', 125.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:06:09', NULL),
-(12, 1, 5, 0, '2026-10-15', 125.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:06:09', NULL),
-(13, 1, 5, 0, '2026-11-15', 125.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:06:09', NULL),
-(14, 1, 5, 0, '2026-12-15', 125.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:06:09', NULL),
-(15, 1, 6, 0, '2026-09-15', 125.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:21:50', NULL),
-(16, 1, 6, 0, '2026-10-15', 125.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:21:50', NULL),
-(17, 1, 6, 0, '2026-11-15', 125.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:21:50', NULL),
-(18, 1, 6, 0, '2026-12-15', 125.00, 0.00, 0.00, 'unpaid', '2026-08-15 00:21:50', NULL);
+INSERT INTO `loan_schedules` (`id`, `business_id`, `loan_id`, `installment_number`, `due_date`, `amount_due`, `penalty_amount`, `total_due`, `penalty_updated_at`, `amount_paid`, `balance_due`, `status`, `created_at`, `updated_at`) VALUES
+(2, 1, 2, 0, '2026-09-15', 1000.00, 0.00, 1000.00, NULL, 0.00, 0.00, 'paid', '2026-08-14 23:59:04', '2026-08-16 21:20:21'),
+(3, 1, 3, 0, '2026-09-15', 250.00, 0.00, 250.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-15 00:00:52', '2026-08-16 21:20:21'),
+(4, 1, 3, 0, '2026-10-15', 250.00, 0.00, 250.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-15 00:00:52', '2026-08-16 21:20:21'),
+(5, 1, 3, 0, '2026-11-15', 250.00, 0.00, 250.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-15 00:00:52', '2026-08-16 21:20:21'),
+(6, 1, 3, 0, '2026-12-15', 250.00, 0.00, 250.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-15 00:00:52', '2026-08-16 21:20:21'),
+(7, 1, 4, 0, '2026-09-15', 125.00, 0.00, 125.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-15 00:01:01', '2026-08-16 21:20:21'),
+(8, 1, 4, 0, '2026-10-15', 125.00, 0.00, 125.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-15 00:01:01', '2026-08-16 21:20:21'),
+(9, 1, 4, 0, '2026-11-15', 125.00, 0.00, 125.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-15 00:01:01', '2026-08-16 21:20:21'),
+(10, 1, 4, 0, '2026-12-15', 125.00, 0.00, 125.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-15 00:01:01', '2026-08-16 21:20:21'),
+(11, 1, 5, 0, '2026-09-15', 125.00, 0.00, 125.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-15 00:06:09', '2026-08-16 21:20:21'),
+(12, 1, 5, 0, '2026-10-15', 125.00, 0.00, 125.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-15 00:06:09', '2026-08-16 21:20:21'),
+(13, 1, 5, 0, '2026-11-15', 125.00, 0.00, 125.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-15 00:06:09', '2026-08-16 21:20:21'),
+(14, 1, 5, 0, '2026-12-15', 125.00, 0.00, 125.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-15 00:06:09', '2026-08-16 21:20:21'),
+(19, 1, 7, 0, '2026-09-14', 100.00, 0.00, 0.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-16 23:30:34', NULL),
+(29, 1, 6, 1, '2026-08-20', 1000.00, 0.00, 1000.00, NULL, 0.00, 1000.00, 'unpaid', '2026-08-17 00:07:10', '2026-08-17 00:07:10'),
+(30, 1, 8, 0, '2026-08-24', 1100.00, 0.00, 0.00, NULL, 0.00, 0.00, 'partially_paid', '2026-08-17 00:14:51', '2026-08-17 00:19:04');
 
 -- --------------------------------------------------------
 
@@ -387,7 +409,8 @@ INSERT INTO `users` (`id`, `name`, `email`, `password`, `role`, `status`, `creat
 (1, 'System Admin', 'admin@gmail.com', '$2y$10$KMw9ifujJT.cmU397ix/s.iqG0Gk9tJ1lhHt4RdsKWj2taPnTYlDi', 'super_admin', 'active', '2026-08-14 23:47:50', NULL),
 (2, 'Business Owner', 'owner@gmail.com', '$2y$10$KMw9ifujJT.cmU397ix/s.iqG0Gk9tJ1lhHt4RdsKWj2taPnTYlDi', 'admin', 'active', '2026-08-14 23:47:58', '2026-08-14 23:56:13'),
 (3, 'Marldohn Rubinos', 'mrubinos@azpired.net', '$2y$10$rS3TrrKiKBs4dbouYlmqWeQw3LsKeb0lT48k8BbFa/qvoJ9FsPr0G', 'staff', 'active', '2026-08-15 00:43:21', '2026-08-15 00:44:31'),
-(4, 'March Shelou', 'mardillo@azpired.net', '$2y$10$m0Vm1Al2Gxo87D9Ev.o89OAYbejOa1lcw55j1ODa4pl2uk1.vAC1K', 'admin', 'active', '2026-08-15 01:02:08', '2026-08-15 01:04:11');
+(4, 'March Shelou', 'mardillo@azpired.net', '$2y$10$m0Vm1Al2Gxo87D9Ev.o89OAYbejOa1lcw55j1ODa4pl2uk1.vAC1K', 'admin', 'active', '2026-08-15 01:02:08', '2026-08-15 01:04:11'),
+(5, 'Marldohn Rubinos', 'admin2@gmail.com', '$2y$10$C/TF4gbrdfkK7ZJs1Ir1rO6pbkfzGMUMsuwXe/hhnc.EkvY.0/BbC', 'admin', 'active', '2026-08-16 21:16:24', '2026-08-16 21:17:01');
 
 --
 -- Indexes for dumped tables
@@ -532,13 +555,13 @@ ALTER TABLE `businesses`
 -- AUTO_INCREMENT for table `business_users`
 --
 ALTER TABLE `business_users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `loans`
 --
 ALTER TABLE `loans`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT for table `loan_accounts`
@@ -550,7 +573,7 @@ ALTER TABLE `loan_accounts`
 -- AUTO_INCREMENT for table `loan_account_transactions`
 --
 ALTER TABLE `loan_account_transactions`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- AUTO_INCREMENT for table `loan_account_transfers`
@@ -586,25 +609,25 @@ ALTER TABLE `loan_guarantors`
 -- AUTO_INCREMENT for table `loan_payments`
 --
 ALTER TABLE `loan_payments`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `loan_penalties`
 --
 ALTER TABLE `loan_penalties`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `loan_schedules`
 --
 ALTER TABLE `loan_schedules`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=19;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=31;
 
 --
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- Constraints for dumped tables
