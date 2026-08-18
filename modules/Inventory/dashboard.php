@@ -1,5 +1,6 @@
-
 <?php
+
+$pdo = Database::getConnection();
 
 $businessId = $_SESSION['business_id'] ?? null;
 
@@ -13,10 +14,181 @@ $businessName = $_SESSION['business_name'] ?? 'Business';
 $activePage = 'inventory_dashboard';
 $pageTitle = 'Inventory Dashboard';
 
+/*
+|--------------------------------------------------------------------------
+| INVENTORY SUMMARY
+|--------------------------------------------------------------------------
+*/
+
 $totalProducts = 0;
 $lowStockProducts = 0;
 $outOfStockProducts = 0;
 $inventoryValue = 0;
+
+try {
+
+    /*
+     * IMPORTANT:
+     * Everything here comes ONLY from inventory_products.
+     * POS is completely separate.
+     */
+
+    $stmt = $pdo->prepare("
+        SELECT
+            COUNT(*) AS total_products,
+
+            SUM(
+                CASE
+                    WHEN current_stock > 0
+                    AND current_stock <= minimum_stock
+                    THEN 1
+                    ELSE 0
+                END
+            ) AS low_stock_products,
+
+            SUM(
+                CASE
+                    WHEN current_stock <= 0
+                    THEN 1
+                    ELSE 0
+                END
+            ) AS out_of_stock_products,
+
+            COALESCE(
+                SUM(
+                    current_stock * cost_price
+                ),
+                0
+            ) AS inventory_value
+
+        FROM inventory_products
+
+        WHERE business_id = ?
+    ");
+
+    $stmt->execute([$businessId]);
+
+    $summary = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($summary) {
+
+        $totalProducts = (int)($summary['total_products'] ?? 0);
+
+        $lowStockProducts = (int)(
+            $summary['low_stock_products'] ?? 0
+        );
+
+        $outOfStockProducts = (int)(
+            $summary['out_of_stock_products'] ?? 0
+        );
+
+        $inventoryValue = (float)(
+            $summary['inventory_value'] ?? 0
+        );
+    }
+
+} catch (Throwable $e) {
+
+    /*
+     * Keep dashboard working even if the query fails.
+     */
+
+    $totalProducts = 0;
+    $lowStockProducts = 0;
+    $outOfStockProducts = 0;
+    $inventoryValue = 0;
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| LOW STOCK PRODUCTS
+|--------------------------------------------------------------------------
+*/
+
+$lowStockList = [];
+
+try {
+
+    $stmt = $pdo->prepare("
+        SELECT
+            id,
+            name,
+            sku,
+            current_stock,
+            minimum_stock,
+            cost_price,
+            status
+
+        FROM inventory_products
+
+        WHERE business_id = ?
+        AND current_stock > 0
+        AND current_stock <= minimum_stock
+
+        ORDER BY current_stock ASC, name ASC
+
+        LIMIT 10
+    ");
+
+    $stmt->execute([$businessId]);
+
+    $lowStockList = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+} catch (Throwable $e) {
+
+    $lowStockList = [];
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| RECENT STOCK MOVEMENTS
+|--------------------------------------------------------------------------
+*/
+
+$recentMovements = [];
+
+try {
+
+    $stmt = $pdo->prepare("
+        SELECT
+            m.id,
+            m.product_id,
+            m.movement_type,
+            m.quantity,
+            m.unit_cost,
+            m.previous_stock,
+            m.new_stock,
+            m.reference_type,
+            m.reference_id,
+            m.notes,
+            m.created_at,
+
+            p.name AS product_name,
+            p.sku AS product_sku
+
+        FROM inventory_stock_movements m
+
+        INNER JOIN inventory_products p
+            ON p.id = m.product_id
+            AND p.business_id = m.business_id
+
+        WHERE m.business_id = ?
+
+        ORDER BY m.id DESC
+
+        LIMIT 10
+    ");
+
+    $stmt->execute([$businessId]);
+
+    $recentMovements = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+} catch (Throwable $e) {
+
+    $recentMovements = [];
+}
 
 ?>
 
@@ -26,17 +198,23 @@ $inventoryValue = 0;
 <head>
 
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+
+<meta
+    name="viewport"
+    content="width=device-width,initial-scale=1.0"
+>
 
 <title><?= htmlspecialchars($pageTitle) ?></title>
 
 <link
     href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-    rel="stylesheet">
+    rel="stylesheet"
+>
 
 <link
     href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"
-    rel="stylesheet">
+    rel="stylesheet"
+>
 
 <script>
 (function(){
@@ -130,6 +308,45 @@ body{
     flex-shrink:0;
 }
 
+.inventory-table{
+    width:100%;
+}
+
+.inventory-table th{
+    font-size:.72rem;
+    letter-spacing:.04em;
+    white-space:nowrap;
+}
+
+.inventory-table td{
+    vertical-align:middle;
+}
+
+.stock-low{
+    color:var(--bs-warning);
+    font-weight:700;
+}
+
+.stock-out{
+    color:var(--bs-danger);
+    font-weight:700;
+}
+
+.stock-ok{
+    color:var(--bs-success);
+    font-weight:700;
+}
+
+.movement-in{
+    color:var(--bs-success);
+    font-weight:700;
+}
+
+.movement-out{
+    color:var(--bs-danger);
+    font-weight:700;
+}
+
 @media(max-width:575.98px){
 
     .inventory-main>.p-3,
@@ -185,485 +402,811 @@ body{
 
 <div class="d-flex flex-column flex-lg-row min-vh-100">
 
-    <?php
-    include __DIR__ . '/../../resources/partials/InventorySidebar.php';
-    ?>
+<?php
 
-    <main class="inventory-main flex-grow-1 bg-body-tertiary">
+$sidebarPath = __DIR__ . '/../resources/partials/InventorySidebar.php';
 
-        <div class="p-3 p-md-4">
+if (file_exists($sidebarPath)) {
+    include $sidebarPath;
+}
 
-            <!-- HEADER -->
+?>
 
-            <div class="inventory-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+<main class="inventory-main flex-grow-1 bg-body-tertiary">
 
-                <div>
+<div class="p-3 p-md-4">
 
-                    <div class="d-flex align-items-center gap-2 mb-1">
+<!-- =====================================================
+     HEADER
+====================================================== -->
 
-                        <div class="d-lg-none bg-primary bg-opacity-10 text-primary rounded-3 p-2">
-                            <i class="bi bi-boxes"></i>
-                        </div>
+<div class="inventory-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
 
-                        <h2 class="fw-bold text-body mb-0">
-                            Inventory Dashboard
-                        </h2>
+<div>
 
-                    </div>
+<div class="d-flex align-items-center gap-2 mb-1">
 
-                    <p class="text-muted small mb-0">
+<div class="d-lg-none bg-primary bg-opacity-10 text-primary rounded-3 p-2">
 
-                        Manage your products and stock for
+<i class="bi bi-boxes"></i>
 
-                        <span class="fw-semibold text-primary">
-                            <?= htmlspecialchars($businessName) ?>
-                        </span>
+</div>
 
-                    </p>
+<h2 class="fw-bold text-body mb-0">
+Inventory Dashboard
+</h2>
 
-                </div>
+</div>
 
-                <a
-                    href="index.php?page=inventory_products_create"
-                    class="btn btn-primary fw-bold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2">
+<p class="text-muted small mb-0">
 
-                    <i class="bi bi-plus-lg"></i>
+Manage your products and stock for
 
-                    <span>
-                        Add Product
-                    </span>
+<span class="fw-semibold text-primary">
+<?= htmlspecialchars($businessName) ?>
+</span>
 
-                </a>
+</p>
 
-            </div>
+</div>
 
+<a
+    href="index.php?page=inventory_products_create"
+    class="btn btn-primary fw-bold px-3 py-2 rounded-3 shadow-sm d-flex align-items-center gap-2"
+>
 
-            <!-- STATISTICS -->
+<i class="bi bi-plus-lg"></i>
 
-            <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+<span>
+Add Product
+</span>
 
+</a>
 
-                <!-- TOTAL PRODUCTS -->
+</div>
 
-                <div class="col">
 
-                    <div class="card inventory-card shadow-sm bg-body h-100">
+<!-- =====================================================
+     STATISTICS
+====================================================== -->
 
-                        <div class="card-body p-4">
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
 
-                            <div class="d-flex justify-content-between align-items-start gap-3">
 
-                                <div>
+<!-- TOTAL PRODUCTS -->
 
-                                    <div class="text-muted fw-bold small mb-2">
-                                        TOTAL PRODUCTS
-                                    </div>
+<div class="col">
 
-                                    <div class="inventory-value text-primary">
-                                        <?= number_format($totalProducts) ?>
-                                    </div>
+<div class="card inventory-card shadow-sm bg-body h-100">
 
-                                    <div class="text-muted small mt-1">
-                                        Registered products
-                                    </div>
+<div class="card-body p-4">
 
-                                </div>
+<div class="d-flex justify-content-between align-items-start gap-3">
 
-                                <div class="inventory-icon bg-primary bg-opacity-10 text-primary">
+<div>
 
-                                    <i class="bi bi-box-seam"></i>
+<div class="text-muted fw-bold small mb-2">
+TOTAL PRODUCTS
+</div>
 
-                                </div>
+<div class="inventory-value text-primary">
+<?= number_format($totalProducts) ?>
+</div>
 
-                            </div>
+<div class="text-muted small mt-1">
+Registered products
+</div>
 
-                        </div>
+</div>
 
-                    </div>
+<div class="inventory-icon bg-primary bg-opacity-10 text-primary">
 
-                </div>
+<i class="bi bi-box-seam"></i>
 
+</div>
 
-                <!-- LOW STOCK -->
+</div>
 
-                <div class="col">
+</div>
 
-                    <div class="card inventory-card shadow-sm bg-body h-100">
+</div>
 
-                        <div class="card-body p-4">
+</div>
 
-                            <div class="d-flex justify-content-between align-items-start gap-3">
 
-                                <div>
+<!-- LOW STOCK -->
 
-                                    <div class="text-muted fw-bold small mb-2">
-                                        LOW STOCK
-                                    </div>
+<div class="col">
 
-                                    <div class="inventory-value text-warning">
-                                        <?= number_format($lowStockProducts) ?>
-                                    </div>
+<div class="card inventory-card shadow-sm bg-body h-100">
 
-                                    <div class="text-muted small mt-1">
-                                        Need replenishment
-                                    </div>
+<div class="card-body p-4">
 
-                                </div>
+<div class="d-flex justify-content-between align-items-start gap-3">
 
-                                <div class="inventory-icon bg-warning bg-opacity-10 text-warning">
+<div>
 
-                                    <i class="bi bi-exclamation-triangle"></i>
+<div class="text-muted fw-bold small mb-2">
+LOW STOCK
+</div>
 
-                                </div>
+<div class="inventory-value text-warning">
+<?= number_format($lowStockProducts) ?>
+</div>
 
-                            </div>
+<div class="text-muted small mt-1">
+Need replenishment
+</div>
 
-                        </div>
+</div>
 
-                    </div>
+<div class="inventory-icon bg-warning bg-opacity-10 text-warning">
 
-                </div>
+<i class="bi bi-exclamation-triangle"></i>
 
+</div>
 
-                <!-- OUT OF STOCK -->
+</div>
 
-                <div class="col">
+</div>
 
-                    <div class="card inventory-card shadow-sm bg-body h-100">
+</div>
 
-                        <div class="card-body p-4">
+</div>
 
-                            <div class="d-flex justify-content-between align-items-start gap-3">
 
-                                <div>
+<!-- OUT OF STOCK -->
 
-                                    <div class="text-muted fw-bold small mb-2">
-                                        OUT OF STOCK
-                                    </div>
+<div class="col">
 
-                                    <div class="inventory-value text-danger">
-                                        <?= number_format($outOfStockProducts) ?>
-                                    </div>
+<div class="card inventory-card shadow-sm bg-body h-100">
 
-                                    <div class="text-muted small mt-1">
-                                        Currently unavailable
-                                    </div>
+<div class="card-body p-4">
 
-                                </div>
+<div class="d-flex justify-content-between align-items-start gap-3">
 
-                                <div class="inventory-icon bg-danger bg-opacity-10 text-danger">
+<div>
 
-                                    <i class="bi bi-box2"></i>
+<div class="text-muted fw-bold small mb-2">
+OUT OF STOCK
+</div>
 
-                                </div>
+<div class="inventory-value text-danger">
+<?= number_format($outOfStockProducts) ?>
+</div>
 
-                            </div>
+<div class="text-muted small mt-1">
+Currently unavailable
+</div>
 
-                        </div>
+</div>
 
-                    </div>
+<div class="inventory-icon bg-danger bg-opacity-10 text-danger">
 
-                </div>
+<i class="bi bi-box2"></i>
 
+</div>
 
-                <!-- INVENTORY VALUE -->
+</div>
 
-                <div class="col">
+</div>
 
-                    <div class="card inventory-card shadow-sm bg-body h-100">
+</div>
 
-                        <div class="card-body p-4">
+</div>
 
-                            <div class="d-flex justify-content-between align-items-start gap-3">
 
-                                <div class="min-width-0">
+<!-- INVENTORY VALUE -->
 
-                                    <div class="text-muted fw-bold small mb-2">
-                                        INVENTORY VALUE
-                                    </div>
+<div class="col">
 
-                                    <div class="inventory-value text-success text-truncate">
-                                        ₱<?= number_format($inventoryValue,2) ?>
-                                    </div>
+<div class="card inventory-card shadow-sm bg-body h-100">
 
-                                    <div class="text-muted small mt-1">
-                                        Based on cost price
-                                    </div>
+<div class="card-body p-4">
 
-                                </div>
+<div class="d-flex justify-content-between align-items-start gap-3">
 
-                                <div class="inventory-icon bg-success bg-opacity-10 text-success">
+<div class="min-width-0">
 
-                                    <i class="bi bi-cash-stack"></i>
+<div class="text-muted fw-bold small mb-2">
+INVENTORY VALUE
+</div>
 
-                                </div>
+<div class="inventory-value text-success text-truncate">
 
-                            </div>
+₱<?= number_format($inventoryValue,2) ?>
 
-                        </div>
+</div>
 
-                    </div>
+<div class="text-muted small mt-1">
+Based on cost price
+</div>
 
-                </div>
+</div>
 
-            </div>
+<div class="inventory-icon bg-success bg-opacity-10 text-success">
 
+<i class="bi bi-cash-stack"></i>
 
-            <!-- QUICK ACTIONS -->
+</div>
 
-            <div class="card inventory-section shadow-sm bg-body mb-4">
+</div>
 
-                <div class="inventory-section-header">
+</div>
 
-                    <div>
+</div>
 
-                        <h5 class="fw-bold mb-1">
-                            Quick Actions
-                        </h5>
+</div>
 
-                        <p class="text-muted small mb-0">
-                            Common inventory operations
-                        </p>
+</div>
 
-                    </div>
 
-                </div>
+<!-- =====================================================
+     QUICK ACTIONS
+====================================================== -->
 
-                <div class="card-body pt-0">
+<div class="card inventory-section shadow-sm bg-body mb-4">
 
-                    <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3">
+<div class="inventory-section-header">
 
+<div>
 
-                        <div class="col">
+<h5 class="fw-bold mb-1">
+Quick Actions
+</h5>
 
-                            <a
-                                href="index.php?page=inventory_products"
-                                class="quick-action">
+<p class="text-muted small mb-0">
+Common inventory operations
+</p>
 
-                                <div class="quick-action-icon bg-primary bg-opacity-10 text-primary">
+</div>
 
-                                    <i class="bi bi-plus-lg"></i>
+</div>
 
-                                </div>
+<div class="card-body pt-0">
 
-                                <div>
+<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3">
 
-                                    <div class="fw-bold">
-                                        Add Product
-                                    </div>
 
-                                    <div class="text-muted small">
-                                        Create a new product
-                                    </div>
+<div class="col">
 
-                                </div>
+<a
+    href="index.php?page=inventory_products"
+    class="quick-action"
+>
 
-                            </a>
+<div class="quick-action-icon bg-primary bg-opacity-10 text-primary">
 
-                        </div>
+<i class="bi bi-plus-lg"></i>
 
+</div>
 
-                        <div class="col">
+<div>
 
-                            <a
-                                href="index.php?page=inventory_stock_in"
-                                class="quick-action">
+<div class="fw-bold">
+Add Product
+</div>
 
-                                <div class="quick-action-icon bg-success bg-opacity-10 text-success">
+<div class="text-muted small">
+Create a new product
+</div>
 
-                                    <i class="bi bi-box-arrow-in-down"></i>
+</div>
 
-                                </div>
+</a>
 
-                                <div>
+</div>
 
-                                    <div class="fw-bold">
-                                        Stock In
-                                    </div>
 
-                                    <div class="text-muted small">
-                                        Add inventory stock
-                                    </div>
+<div class="col">
 
-                                </div>
+<a
+    href="index.php?page=inventory_stock_in"
+    class="quick-action"
+>
 
-                            </a>
+<div class="quick-action-icon bg-success bg-opacity-10 text-success">
 
-                        </div>
+<i class="bi bi-box-arrow-in-down"></i>
 
+</div>
 
-                        <div class="col">
+<div>
 
-                            <a
-                                href="index.php?page=inventory_stock_out"
-                                class="quick-action">
+<div class="fw-bold">
+Stock In
+</div>
 
-                                <div class="quick-action-icon bg-danger bg-opacity-10 text-danger">
+<div class="text-muted small">
+Add inventory stock
+</div>
 
-                                    <i class="bi bi-box-arrow-up"></i>
+</div>
 
-                                </div>
+</a>
 
-                                <div>
+</div>
 
-                                    <div class="fw-bold">
-                                        Stock Out
-                                    </div>
 
-                                    <div class="text-muted small">
-                                        Remove inventory stock
-                                    </div>
+<div class="col">
 
-                                </div>
+<a
+    href="index.php?page=inventory_stock_out"
+    class="quick-action"
+>
 
-                            </a>
+<div class="quick-action-icon bg-danger bg-opacity-10 text-danger">
 
-                        </div>
+<i class="bi bi-box-arrow-up"></i>
 
+</div>
 
-                        <div class="col">
+<div>
 
-                            <a
-                                href="index.php?page=inventory_products"
-                                class="quick-action">
+<div class="fw-bold">
+Stock Out
+</div>
 
-                                <div class="quick-action-icon bg-info bg-opacity-10 text-info">
+<div class="text-muted small">
+Remove inventory stock
+</div>
 
-                                    <i class="bi bi-search"></i>
+</div>
 
-                                </div>
+</a>
 
-                                <div>
+</div>
 
-                                    <div class="fw-bold">
-                                        View Products
-                                    </div>
 
-                                    <div class="text-muted small">
-                                        Browse inventory
-                                    </div>
+<div class="col">
 
-                                </div>
+<a
+    href="index.php?page=inventory_products"
+    class="quick-action"
+>
 
-                            </a>
+<div class="quick-action-icon bg-info bg-opacity-10 text-info">
 
-                        </div>
+<i class="bi bi-search"></i>
 
-                    </div>
+</div>
 
-                </div>
+<div>
 
-            </div>
+<div class="fw-bold">
+View Products
+</div>
 
+<div class="text-muted small">
+Browse inventory
+</div>
 
-            <!-- LOW STOCK -->
+</div>
 
-            <div class="card inventory-section shadow-sm bg-body mb-4">
+</a>
 
-                <div class="inventory-section-header d-flex justify-content-between align-items-center gap-3">
+</div>
 
-                    <div>
+</div>
 
-                        <h5 class="fw-bold mb-1">
-                            Low Stock Products
-                        </h5>
+</div>
 
-                        <p class="text-muted small mb-0">
-                            Products that need replenishment
-                        </p>
+</div>
 
-                    </div>
 
-                    <a
-                        href="index.php?page=inventory_products&filter=low_stock"
-                        class="btn btn-sm btn-outline-primary fw-semibold">
+<!-- =====================================================
+     LOW STOCK PRODUCTS
+====================================================== -->
 
-                        View All
+<div class="card inventory-section shadow-sm bg-body mb-4">
 
-                        <i class="bi bi-arrow-right ms-1"></i>
+<div class="inventory-section-header d-flex justify-content-between align-items-center gap-3">
 
-                    </a>
+<div>
 
-                </div>
+<h5 class="fw-bold mb-1">
+Low Stock Products
+</h5>
 
-                <div class="empty-state text-center text-muted">
+<p class="text-muted small mb-0">
+Products that need replenishment
+</p>
 
-                    <div class="mb-3">
+</div>
 
-                        <i class="bi bi-box-seam display-6 opacity-50"></i>
+<a
+    href="index.php?page=inventory_products&filter=low_stock"
+    class="btn btn-sm btn-outline-primary fw-semibold"
+>
 
-                    </div>
+View All
 
-                    <div class="fw-semibold mb-1">
-                        No low-stock data yet
-                    </div>
+<i class="bi bi-arrow-right ms-1"></i>
 
-                    <div class="small">
-                        Low-stock products will appear here once products are added.
-                    </div>
+</a>
 
-                </div>
+</div>
 
-            </div>
 
+<?php if (!$lowStockList): ?>
 
-            <!-- RECENT STOCK MOVEMENTS -->
+<div class="empty-state text-center text-muted">
 
-            <div class="card inventory-section shadow-sm bg-body">
+<div class="mb-3">
 
-                <div class="inventory-section-header d-flex justify-content-between align-items-center gap-3">
+<i class="bi bi-check-circle display-6 opacity-50"></i>
 
-                    <div>
+</div>
 
-                        <h5 class="fw-bold mb-1">
-                            Recent Stock Movements
-                        </h5>
+<div class="fw-semibold mb-1">
+No low-stock products
+</div>
 
-                        <p class="text-muted small mb-0">
-                            Latest inventory activity
-                        </p>
+<div class="small">
+All products currently have sufficient stock.
+</div>
 
-                    </div>
+</div>
 
-                    <a
-                        href="index.php?page=inventory_stock_history"
-                        class="small text-decoration-none fw-semibold text-nowrap">
+<?php else: ?>
 
-                        View All
+<div class="table-responsive">
 
-                        <i class="bi bi-arrow-right ms-1"></i>
+<table class="table inventory-table table-hover align-middle mb-0">
 
-                    </a>
+<thead class="table-light text-uppercase text-muted">
 
-                </div>
+<tr>
 
-                <div class="empty-state text-center text-muted">
+<th class="ps-4">
+Product
+</th>
 
-                    <div class="mb-3">
+<th>
+SKU
+</th>
 
-                        <i class="bi bi-clock-history display-6 opacity-50"></i>
+<th>
+Current Stock
+</th>
 
-                    </div>
+<th>
+Minimum Stock
+</th>
 
-                    <div class="fw-semibold mb-1">
-                        No stock movements yet
-                    </div>
+<th>
+Status
+</th>
 
-                    <div class="small">
-                        Stock-in and stock-out activity will appear here.
-                    </div>
+</tr>
 
-                </div>
+</thead>
 
-            </div>
+<tbody>
 
-        </div>
+<?php foreach ($lowStockList as $product): ?>
 
-    </main>
+<tr>
+
+<td class="ps-4">
+
+<div class="fw-bold">
+
+<?= htmlspecialchars($product['name']) ?>
+
+</div>
+
+</td>
+
+<td>
+
+<span class="small text-muted">
+
+<?= htmlspecialchars($product['sku'] ?? '-') ?>
+
+</span>
+
+</td>
+
+<td>
+
+<span class="stock-low">
+
+<?= number_format(
+    (float)$product['current_stock'],
+    2
+) ?>
+
+</span>
+
+</td>
+
+<td>
+
+<span class="small">
+
+<?= number_format(
+    (float)$product['minimum_stock'],
+    2
+) ?>
+
+</span>
+
+</td>
+
+<td>
+
+<span class="badge text-bg-warning">
+Low Stock
+</span>
+
+</td>
+
+</tr>
+
+<?php endforeach; ?>
+
+</tbody>
+
+</table>
+
+</div>
+
+<?php endif; ?>
+
+</div>
+
+
+<!-- =====================================================
+     RECENT STOCK MOVEMENTS
+====================================================== -->
+
+<div class="card inventory-section shadow-sm bg-body">
+
+<div class="inventory-section-header d-flex justify-content-between align-items-center gap-3">
+
+<div>
+
+<h5 class="fw-bold mb-1">
+Recent Stock Movements
+</h5>
+
+<p class="text-muted small mb-0">
+Latest inventory activity
+</p>
+
+</div>
+
+<a
+    href="index.php?page=inventory_stock_history"
+    class="small text-decoration-none fw-semibold text-nowrap"
+>
+
+View All
+
+<i class="bi bi-arrow-right ms-1"></i>
+
+</a>
+
+</div>
+
+
+<?php if (!$recentMovements): ?>
+
+<div class="empty-state text-center text-muted">
+
+<div class="mb-3">
+
+<i class="bi bi-clock-history display-6 opacity-50"></i>
+
+</div>
+
+<div class="fw-semibold mb-1">
+No stock movements yet
+</div>
+
+<div class="small">
+Stock-in and stock-out activity will appear here.
+</div>
+
+</div>
+
+<?php else: ?>
+
+<div class="table-responsive">
+
+<table class="table inventory-table table-hover align-middle mb-0">
+
+<thead class="table-light text-uppercase text-muted">
+
+<tr>
+
+<th class="ps-4">
+Product
+</th>
+
+<th>
+Movement
+</th>
+
+<th>
+Quantity
+</th>
+
+<th>
+Previous
+</th>
+
+<th>
+New Stock
+</th>
+
+<th>
+Date
+</th>
+
+</tr>
+
+</thead>
+
+<tbody>
+
+<?php foreach ($recentMovements as $movement): ?>
+
+<?php
+
+$movementType = $movement['movement_type'] ?? '';
+
+$isStockIn = in_array(
+    $movementType,
+    ['stock_in', 'opening_stock'],
+    true
+);
+
+$movementClass = $isStockIn
+    ? 'movement-in'
+    : 'movement-out';
+
+$movementIcon = $isStockIn
+    ? 'bi-arrow-down-circle'
+    : 'bi-arrow-up-circle';
+
+$movementLabel = match ($movementType) {
+
+    'stock_in' => 'Stock In',
+
+    'stock_out' => 'Stock Out',
+
+    'opening_stock' => 'Opening Stock',
+
+    default => ucwords(
+        str_replace('_', ' ', $movementType)
+    )
+
+};
+
+?>
+
+<tr>
+
+<td class="ps-4">
+
+<div class="fw-bold">
+
+<?= htmlspecialchars(
+    $movement['product_name'] ?? 'Unknown Product'
+) ?>
+
+</div>
+
+<?php if (!empty($movement['product_sku'])): ?>
+
+<div class="small text-muted">
+
+<?= htmlspecialchars(
+    $movement['product_sku']
+) ?>
+
+</div>
+
+<?php endif; ?>
+
+</td>
+
+
+<td>
+
+<span class="<?= $movementClass ?>">
+
+<i class="bi <?= $movementIcon ?> me-1"></i>
+
+<?= htmlspecialchars($movementLabel) ?>
+
+</span>
+
+</td>
+
+
+<td>
+
+<span class="<?= $movementClass ?>">
+
+<?= number_format(
+    (float)$movement['quantity'],
+    2
+) ?>
+
+</span>
+
+</td>
+
+
+<td>
+
+<span class="small">
+
+<?= number_format(
+    (float)$movement['previous_stock'],
+    2
+) ?>
+
+</span>
+
+</td>
+
+
+<td>
+
+<span class="fw-semibold">
+
+<?= number_format(
+    (float)$movement['new_stock'],
+    2
+) ?>
+
+</span>
+
+</td>
+
+
+<td>
+
+<span class="small text-muted">
+
+<?= !empty($movement['created_at'])
+    ? date(
+        'M d, Y h:i A',
+        strtotime($movement['created_at'])
+    )
+    : '-'
+?>
+
+</span>
+
+</td>
+
+</tr>
+
+<?php endforeach; ?>
+
+</tbody>
+
+</table>
+
+</div>
+
+<?php endif; ?>
+
+</div>
+
+</div>
+
+</main>
 
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 </body>
+
 </html>

@@ -2,8 +2,8 @@
 -- version 5.2.1
 -- https://www.phpmyadmin.net/
 --
--- Host: 127.0.0.1
--- Generation Time: Aug 17, 2026 at 11:48 PM
+-- Host: 127.0.0.1:3306
+-- Generation Time: Aug 18, 2026 at 01:04 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -191,7 +191,7 @@ INSERT INTO `inventory_products` (`id`, `business_id`, `category_id`, `brand_id`
 (2, 2, NULL, NULL, NULL, NULL, 'Flava', NULL, NULL, NULL, 0.00, 0.00, 0.00, 0.00, NULL, 0.00, NULL, 'active', 1, '2026-08-17 18:24:27', NULL),
 (3, 2, NULL, NULL, NULL, NULL, 'Flava', NULL, NULL, NULL, 0.00, 0.00, 0.00, 0.00, NULL, 0.00, NULL, 'active', 1, '2026-08-17 18:25:02', NULL),
 (4, 2, NULL, NULL, NULL, NULL, 'Flava', NULL, NULL, NULL, 0.00, 0.00, 0.00, 0.00, NULL, 0.00, NULL, 'active', 1, '2026-08-17 18:25:13', NULL),
-(5, 2, NULL, NULL, NULL, NULL, 'Chillaxsssss', NULL, NULL, NULL, 750.00, 1000.00, 800.00, 2.00, 10.00, 10.00, NULL, 'active', 1, '2026-08-17 18:53:44', '2026-08-17 19:19:56'),
+(5, 2, NULL, NULL, NULL, NULL, 'Chillaxsssss', NULL, NULL, NULL, 750.00, 1000.00, 800.00, 2.00, 10.00, 1.00, NULL, 'active', 1, '2026-08-17 18:53:44', '2026-08-18 05:04:07'),
 (6, 2, NULL, NULL, NULL, NULL, 'Chillaxs - Copy', NULL, NULL, NULL, 750.00, 1000.00, 800.00, 2.00, 10.00, 0.00, NULL, 'active', 1, '2026-08-17 19:10:46', NULL),
 (7, 2, NULL, NULL, NULL, NULL, 'Chillaxs (Copy)', NULL, NULL, NULL, 750.00, 1000.00, 800.00, 2.00, 10.00, 0.00, NULL, 'active', 1, '2026-08-17 19:15:47', NULL);
 
@@ -265,7 +265,9 @@ CREATE TABLE `inventory_stock_movements` (
 --
 
 INSERT INTO `inventory_stock_movements` (`id`, `business_id`, `product_id`, `movement_type`, `quantity`, `unit_cost`, `previous_stock`, `new_stock`, `reference_type`, `reference_id`, `notes`, `created_by`, `created_at`) VALUES
-(1, 2, 5, '', 10.00, 750.00, 0.00, 10.00, 'manual_adjustment', 5, 'Additional', 1, '2026-08-17 19:10:13');
+(1, 2, 5, '', 10.00, 750.00, 0.00, 10.00, 'manual_adjustment', 5, 'Additional', 1, '2026-08-17 19:10:13'),
+(2, 2, 5, '', 6.00, 750.00, 10.00, 4.00, 'manual_adjustment', 5, 'Customer Return', 1, '2026-08-18 05:03:28'),
+(3, 2, 5, '', 3.00, 750.00, 4.00, 1.00, 'manual_adjustment', 5, 'Customer Return', 1, '2026-08-18 05:04:07');
 
 -- --------------------------------------------------------
 
@@ -1289,7 +1291,7 @@ ALTER TABLE `inventory_purchase_orders`
 -- AUTO_INCREMENT for table `inventory_stock_movements`
 --
 ALTER TABLE `inventory_stock_movements`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `inventory_suppliers`
