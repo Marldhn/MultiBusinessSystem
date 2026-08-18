@@ -374,7 +374,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
-
 /* =========================================================
    LOAD CATEGORIES
 ========================================================= */
@@ -395,6 +394,7 @@ $stmt = $pdo->prepare("
         ON p.category_id = c.id
         AND p.business_id = c.business_id
     WHERE c.business_id = ?
+    AND c.created_by = ?
     GROUP BY
         c.id,
         c.business_id,
@@ -407,7 +407,7 @@ $stmt = $pdo->prepare("
     ORDER BY c.id DESC
 ");
 
-$stmt->execute([$businessId]);
+$stmt->execute([$businessId, $userId]);
 
 $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -720,15 +720,15 @@ body {
 
 <div class="d-flex flex-column flex-lg-row min-vh-100">
 
-  <?php
+    <?php
 
-$sidebarPath = __DIR__ . '/../../../resources/partials/InventorySidebar.php';
+    $sidebarPath = __DIR__ . '/../../../resources/partials/InventorySidebar.php';
 
-if (file_exists($sidebarPath)) {
-    include $sidebarPath;
-}
+    if (file_exists($sidebarPath)) {
+        include $sidebarPath;
+    }
 
-?>
+    ?>
 
     <main class="inventory-main flex-grow-1 bg-body-tertiary">
 

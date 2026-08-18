@@ -1,4 +1,3 @@
-
 <?php
 
 $pdo = Database::getConnection();
@@ -51,11 +50,12 @@ $stmt = $pdo->prepare("
     SELECT id, name
     FROM inventory_categories
     WHERE business_id = ?
+    AND created_by = ?
     AND status = 'active'
     ORDER BY name ASC
 ");
 
-$stmt->execute([$businessId]);
+$stmt->execute([$businessId, $userId]);
 
 $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -73,10 +73,11 @@ $stmt = $pdo->prepare("
         COALESCE(SUM(current_stock * selling_price), 0) AS total_selling_value
     FROM inventory_products
     WHERE business_id = ?
+    AND created_by = ?
     AND status = 'active'
 ");
 
-$stmt->execute([$businessId]);
+$stmt->execute([$businessId, $userId]);
 
 $summary = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -89,11 +90,12 @@ $stmt = $pdo->prepare("
     SELECT COUNT(*)
     FROM inventory_products
     WHERE business_id = ?
+    AND created_by = ?
     AND status = 'active'
     AND current_stock <= 0
 ");
 
-$stmt->execute([$businessId]);
+$stmt->execute([$businessId, $userId]);
 
 $outOfStock = (int)$stmt->fetchColumn();
 
@@ -101,12 +103,13 @@ $stmt = $pdo->prepare("
     SELECT COUNT(*)
     FROM inventory_products
     WHERE business_id = ?
+    AND created_by = ?
     AND status = 'active'
     AND current_stock > 0
     AND current_stock <= minimum_stock
 ");
 
-$stmt->execute([$businessId]);
+$stmt->execute([$businessId, $userId]);
 
 $lowStock = (int)$stmt->fetchColumn();
 
@@ -136,11 +139,13 @@ $stmt = $pdo->prepare("
 
     FROM inventory_stock_movements
     WHERE business_id = ?
+    AND created_by = ?
     AND DATE(created_at) BETWEEN ? AND ?
 ");
 
 $stmt->execute([
     $businessId,
+    $userId,
     $dateFrom,
     $dateTo
 ]);
@@ -199,10 +204,11 @@ if ($reportType === 'current_stock' || $reportType === 'valuation') {
             AND s.business_id = p.business_id
 
         WHERE p.business_id = ?
+        AND p.created_by = ?
         AND p.status = 'active'
     ";
 
-    $params = [$businessId];
+    $params = [$businessId, $userId];
 
     if ($search !== '') {
 
@@ -285,12 +291,13 @@ if ($reportType === 'low_stock') {
             AND u.business_id = p.business_id
 
         WHERE p.business_id = ?
+        AND p.created_by = ?
         AND p.status = 'active'
         AND p.current_stock > 0
         AND p.current_stock <= p.minimum_stock
     ";
 
-    $params = [$businessId];
+    $params = [$businessId, $userId];
 
     if ($search !== '') {
 
@@ -370,11 +377,12 @@ if ($reportType === 'out_of_stock') {
             AND u.business_id = p.business_id
 
         WHERE p.business_id = ?
+        AND p.created_by = ?
         AND p.status = 'active'
         AND p.current_stock <= 0
     ";
 
-    $params = [$businessId];
+    $params = [$businessId, $userId];
 
     if ($search !== '') {
 
@@ -466,12 +474,14 @@ if ($reportType === 'stock_in' || $reportType === 'stock_out') {
             AND u.business_id = p.business_id
 
         WHERE m.business_id = ?
+        AND m.created_by = ?
         AND m.movement_type IN $movementTypes
         AND DATE(m.created_at) BETWEEN ? AND ?
     ";
 
     $params = [
         $businessId,
+        $userId,
         $dateFrom,
         $dateTo
     ];

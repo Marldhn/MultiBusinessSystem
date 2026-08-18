@@ -50,8 +50,8 @@ function e($value)
 |--------------------------------------------------------------------------
 |
 | IMPORTANT:
-| business_id is ALWAYS included.
-| This prevents another business from viewing a transaction by changing
+| business_id and created_by are ALWAYS included.
+| This prevents another user or business from viewing a transaction by changing
 | the ID in the URL.
 |
 */
@@ -87,12 +87,14 @@ if ($viewId > 0) {
                 AND c.business_id = s.business_id
             WHERE s.id = ?
             AND s.business_id = ?
+            AND s.created_by = ?
             LIMIT 1
         ");
 
         $stmt->execute([
             $viewId,
-            $businessId
+            $businessId,
+            $userId
         ]);
 
         $selectedSale = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -152,11 +154,13 @@ if ($viewId > 0) {
 */
 
 $where = [
-    's.business_id = ?'
+    's.business_id = ?',
+    's.created_by = ?'
 ];
 
 $params = [
-    $businessId
+    $businessId,
+    $userId
 ];
 
 if ($search !== '') {
@@ -318,6 +322,10 @@ try {
             (
                 SELECT COALESCE(SUM(si.quantity), 0)
                 FROM pos_sale_items si
+                JOIN pos_sales sal 
+                    ON sal.id = si.sale_id 
+                    AND sal.business_id = ?
+                    AND sal.created_by = ?
                 WHERE si.sale_id = s.id
             ) AS total_items
         FROM pos_sales s
@@ -329,8 +337,11 @@ try {
         LIMIT {$perPage} OFFSET {$offset}
     ";
 
+    // Bind $businessId and $userId first for the subquery, followed by the rest of the dynamic filters
+    $loadParams = array_merge([$businessId, $userId], $params);
+
     $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
+    $stmt->execute($loadParams);
 
     $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 

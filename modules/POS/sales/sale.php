@@ -1,4 +1,3 @@
-
 <?php
 
 $pdo = Database::getConnection();
@@ -114,7 +113,7 @@ try {
 |--------------------------------------------------------------------------
 |
 | IMPORTANT:
-| Only products belonging to the current business are loaded.
+| Only products belonging to the current business and user are loaded.
 |
 */
 
@@ -151,13 +150,15 @@ try {
             AND u.business_id = p.business_id
 
         WHERE p.business_id = ?
+        AND p.created_by = ?
         AND p.status = 'active'
 
         ORDER BY p.name ASC
     ");
 
     $stmt->execute([
-        $businessId
+        $businessId,
+        $userId
     ]);
 
     $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -307,7 +308,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 |--------------------------------------------------------------------------
                 |
                 | IMPORTANT:
-                | The business_id condition prevents another business'
+                | The business_id and created_by conditions prevent another user's
                 | products from being submitted manually.
                 |
                 */
@@ -346,13 +347,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         FROM pos_products
                         WHERE id = ?
                         AND business_id = ?
+                        AND created_by = ?
                         AND status = 'active'
                         FOR UPDATE
                     ");
 
                     $stmt->execute([
                         $productId,
-                        $businessId
+                        $businessId,
+                        $userId
                     ]);
 
                     $product =
@@ -552,6 +555,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     SET current_stock = ?
                     WHERE id = ?
                     AND business_id = ?
+                    AND created_by = ?
                 ");
 
                 /*
@@ -618,7 +622,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stockStmt->execute([
                         $item['new_stock'],
                         $item['product_id'],
-                        $businessId
+                        $businessId,
+                        $userId
                     ]);
 
                     if ($stockStmt->rowCount() < 1) {
@@ -715,7 +720,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 

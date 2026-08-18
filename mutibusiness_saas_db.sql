@@ -2,8 +2,8 @@
 -- version 5.2.1
 -- https://www.phpmyadmin.net/
 --
--- Host: 127.0.0.1:3306
--- Generation Time: Aug 18, 2026 at 01:04 PM
+-- Host: 127.0.0.1
+-- Generation Time: Aug 18, 2026 at 11:52 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -73,7 +73,8 @@ INSERT INTO `business_users` (`id`, `business_id`, `user_id`, `role`, `status`, 
 (4, 1, 5, 'admin', 'active', '2026-08-16 21:17:06'),
 (6, 2, 4, 'admin', 'active', '2026-08-17 10:27:46'),
 (7, 3, 4, 'admin', 'active', '2026-08-17 10:27:46'),
-(8, 2, 5, 'admin', 'active', '2026-08-17 14:53:17');
+(8, 2, 5, 'admin', 'active', '2026-08-17 14:53:17'),
+(9, 3, 5, 'admin', 'active', '2026-08-18 19:48:45');
 
 -- --------------------------------------------------------
 
@@ -128,6 +129,14 @@ CREATE TABLE `inventory_brands` (
   `updated_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `inventory_brands`
+--
+
+INSERT INTO `inventory_brands` (`id`, `business_id`, `name`, `description`, `status`, `created_by`, `created_at`, `updated_at`) VALUES
+(1, 2, 'admin5', NULL, 'active', 5, '2026-08-18 16:46:53', NULL),
+(2, 2, 'admin1', NULL, 'active', 1, '2026-08-18 16:47:06', NULL);
+
 -- --------------------------------------------------------
 
 --
@@ -150,7 +159,10 @@ CREATE TABLE `inventory_categories` (
 --
 
 INSERT INTO `inventory_categories` (`id`, `business_id`, `name`, `description`, `status`, `created_by`, `created_at`, `updated_at`) VALUES
-(1, 2, 'Vape', 'Vape', 'active', 1, '2026-08-17 19:22:09', NULL);
+(1, 2, 'Vape', 'Vape', 'active', 1, '2026-08-17 19:22:09', NULL),
+(2, 2, 'qwfqwf', NULL, 'active', 5, '2026-08-18 16:27:17', NULL),
+(3, 2, 'Admin 5', NULL, 'active', 5, '2026-08-18 16:28:15', NULL),
+(4, 2, 'Admin 1', NULL, 'active', 1, '2026-08-18 16:28:25', NULL);
 
 -- --------------------------------------------------------
 
@@ -191,9 +203,13 @@ INSERT INTO `inventory_products` (`id`, `business_id`, `category_id`, `brand_id`
 (2, 2, NULL, NULL, NULL, NULL, 'Flava', NULL, NULL, NULL, 0.00, 0.00, 0.00, 0.00, NULL, 0.00, NULL, 'active', 1, '2026-08-17 18:24:27', NULL),
 (3, 2, NULL, NULL, NULL, NULL, 'Flava', NULL, NULL, NULL, 0.00, 0.00, 0.00, 0.00, NULL, 0.00, NULL, 'active', 1, '2026-08-17 18:25:02', NULL),
 (4, 2, NULL, NULL, NULL, NULL, 'Flava', NULL, NULL, NULL, 0.00, 0.00, 0.00, 0.00, NULL, 0.00, NULL, 'active', 1, '2026-08-17 18:25:13', NULL),
-(5, 2, NULL, NULL, NULL, NULL, 'Chillaxsssss', NULL, NULL, NULL, 750.00, 1000.00, 800.00, 2.00, 10.00, 1.00, NULL, 'active', 1, '2026-08-17 18:53:44', '2026-08-18 05:04:07'),
+(5, 2, NULL, NULL, NULL, NULL, 'Chillaxsssss', NULL, NULL, NULL, 750.00, 1000.00, 800.00, 2.00, 10.00, 10.00, NULL, 'active', 1, '2026-08-17 18:53:44', '2026-08-17 19:19:56'),
 (6, 2, NULL, NULL, NULL, NULL, 'Chillaxs - Copy', NULL, NULL, NULL, 750.00, 1000.00, 800.00, 2.00, 10.00, 0.00, NULL, 'active', 1, '2026-08-17 19:10:46', NULL),
-(7, 2, NULL, NULL, NULL, NULL, 'Chillaxs (Copy)', NULL, NULL, NULL, 750.00, 1000.00, 800.00, 2.00, 10.00, 0.00, NULL, 'active', 1, '2026-08-17 19:15:47', NULL);
+(7, 2, NULL, NULL, NULL, NULL, 'Chillaxs (Copy)', NULL, NULL, NULL, 750.00, 1000.00, 800.00, 2.00, 10.00, 0.00, NULL, 'active', 1, '2026-08-17 19:15:47', NULL),
+(8, 2, NULL, NULL, NULL, NULL, 'qwfqwf', NULL, NULL, NULL, 0.00, 0.00, 0.00, 0.00, NULL, 0.00, NULL, 'active', 1, '2026-08-18 13:42:50', NULL),
+(9, 2, NULL, NULL, NULL, NULL, 'admin 1', NULL, NULL, NULL, 0.00, 0.00, 0.00, 0.00, NULL, 0.00, NULL, 'active', 1, '2026-08-18 13:57:19', NULL),
+(12, 2, NULL, NULL, NULL, NULL, 'qfqfqfqw', NULL, NULL, NULL, 0.00, 0.00, 0.00, 0.00, NULL, 0.00, NULL, 'active', 5, '2026-08-18 17:16:10', NULL),
+(22, 2, 2, 1, NULL, 1, 'Marldohn', 'Rubinos', '12951951', NULL, 100.00, 200.00, 150.00, 10.00, 20.00, 15.00, NULL, 'active', 5, '2026-08-18 17:27:54', NULL);
 
 -- --------------------------------------------------------
 
@@ -265,9 +281,7 @@ CREATE TABLE `inventory_stock_movements` (
 --
 
 INSERT INTO `inventory_stock_movements` (`id`, `business_id`, `product_id`, `movement_type`, `quantity`, `unit_cost`, `previous_stock`, `new_stock`, `reference_type`, `reference_id`, `notes`, `created_by`, `created_at`) VALUES
-(1, 2, 5, '', 10.00, 750.00, 0.00, 10.00, 'manual_adjustment', 5, 'Additional', 1, '2026-08-17 19:10:13'),
-(2, 2, 5, '', 6.00, 750.00, 10.00, 4.00, 'manual_adjustment', 5, 'Customer Return', 1, '2026-08-18 05:03:28'),
-(3, 2, 5, '', 3.00, 750.00, 4.00, 1.00, 'manual_adjustment', 5, 'Customer Return', 1, '2026-08-18 05:04:07');
+(1, 2, 5, '', 10.00, 750.00, 0.00, 10.00, 'manual_adjustment', 5, 'Additional', 1, '2026-08-17 19:10:13');
 
 -- --------------------------------------------------------
 
@@ -290,6 +304,15 @@ CREATE TABLE `inventory_suppliers` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `inventory_suppliers`
+--
+
+INSERT INTO `inventory_suppliers` (`id`, `business_id`, `name`, `contact_person`, `email`, `phone`, `address`, `tax_number`, `notes`, `status`, `created_by`, `created_at`, `updated_at`) VALUES
+(1, 2, 'Marldohn RUbinos', '0906159062', 'marldoh@kfnwe.om', '1950595', 'konfoknwef', NULL, 'knkowef', 'active', 5, '2026-08-18 13:34:41', NULL),
+(2, 2, 'admin5\\ 5', NULL, NULL, NULL, NULL, NULL, NULL, 'active', 5, '2026-08-18 16:56:05', NULL),
+(3, 2, 'admin 1', NULL, NULL, NULL, NULL, NULL, NULL, 'active', 1, '2026-08-18 16:56:14', NULL);
 
 -- --------------------------------------------------------
 
@@ -678,6 +701,15 @@ CREATE TABLE `pos_customers` (
   `updated_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `pos_customers`
+--
+
+INSERT INTO `pos_customers` (`id`, `business_id`, `first_name`, `middle_name`, `last_name`, `email`, `phone`, `address`, `status`, `created_by`, `created_at`, `updated_at`) VALUES
+(1, 3, 'Marldohn', 'Codizar', 'Rubinos', 'marldohncrubinos11@gmail.com', '09061941138', 'Jakosalem Street', 'active', 1, '2026-08-18 19:48:21', NULL),
+(2, 3, 'Admin', '1', 'Test', NULL, NULL, NULL, 'active', 1, '2026-08-18 20:26:44', '2026-08-18 21:04:08'),
+(3, 3, 'Test', 'admin', '2', NULL, NULL, NULL, 'active', 5, '2026-08-18 20:50:32', NULL);
+
 -- --------------------------------------------------------
 
 --
@@ -715,6 +747,14 @@ CREATE TABLE `pos_payments` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `pos_payments`
+--
+
+INSERT INTO `pos_payments` (`id`, `business_id`, `sale_id`, `payment_method`, `amount`, `reference_number`, `payment_date`, `notes`, `created_by`, `created_at`) VALUES
+(1, 3, 2, 'cash', 1000.00, NULL, '2026-08-19 04:41:45', NULL, 5, '2026-08-18 20:41:45'),
+(2, 3, 3, 'card', 100.00, NULL, '2026-08-19 04:50:46', NULL, 5, '2026-08-18 20:50:46');
+
 -- --------------------------------------------------------
 
 --
@@ -744,6 +784,15 @@ CREATE TABLE `pos_products` (
   `updated_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `pos_products`
+--
+
+INSERT INTO `pos_products` (`id`, `business_id`, `category_id`, `brand_id`, `unit_id`, `name`, `sku`, `barcode`, `description`, `cost_price`, `selling_price`, `wholesale_price`, `minimum_stock`, `maximum_stock`, `current_stock`, `image`, `status`, `created_by`, `created_at`, `updated_at`) VALUES
+(1, 3, NULL, NULL, NULL, 'Chillax Vista', NULL, NULL, NULL, 100.00, 150.00, 125.00, 10.00, 20.00, 14.00, NULL, 'active', 1, '2026-08-18 19:53:26', '2026-08-18 20:15:20'),
+(2, 3, NULL, NULL, NULL, 'Test Marldohn Rubinos', NULL, NULL, NULL, 50.00, 100.00, 80.00, 10.00, 20.00, 4.00, NULL, 'active', 5, '2026-08-18 20:31:56', '2026-08-18 20:50:46'),
+(3, 3, NULL, NULL, NULL, 'Test Marldohn Rubinos', NULL, NULL, NULL, 0.00, 0.00, 0.00, 0.00, NULL, 0.00, NULL, 'active', 5, '2026-08-18 20:34:55', NULL);
+
 -- --------------------------------------------------------
 
 --
@@ -770,6 +819,15 @@ CREATE TABLE `pos_sales` (
   `updated_at` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `pos_sales`
+--
+
+INSERT INTO `pos_sales` (`id`, `business_id`, `customer_id`, `invoice_number`, `sale_date`, `subtotal`, `discount`, `tax`, `total_amount`, `amount_paid`, `change_amount`, `payment_status`, `sale_status`, `notes`, `created_by`, `created_at`, `updated_at`) VALUES
+(1, 3, 1, 'INV-20260818-0001', '2026-08-19 04:15:20', 150.00, 0.00, 0.00, 150.00, 0.00, 0.00, 'unpaid', 'completed', NULL, 1, '2026-08-18 20:15:20', NULL),
+(2, 3, NULL, 'INV-20260818-0002', '2026-08-19 04:41:45', 1000.00, 0.00, 0.00, 1000.00, 1000.00, 0.00, 'paid', 'completed', NULL, 5, '2026-08-18 20:41:45', NULL),
+(3, 3, 3, 'INV-20260818-0003', '2026-08-19 04:50:46', 100.00, 0.00, 0.00, 100.00, 100.00, 0.00, 'paid', 'completed', NULL, 5, '2026-08-18 20:50:46', NULL);
+
 -- --------------------------------------------------------
 
 --
@@ -788,6 +846,15 @@ CREATE TABLE `pos_sale_items` (
   `total` decimal(12,2) NOT NULL DEFAULT 0.00,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `pos_sale_items`
+--
+
+INSERT INTO `pos_sale_items` (`id`, `sale_id`, `product_id`, `product_name`, `sku`, `quantity`, `unit_price`, `discount`, `total`, `created_at`) VALUES
+(1, 1, 1, 'Chillax Vista', NULL, 1.00, 150.00, 0.00, 150.00, '2026-08-18 20:15:20'),
+(2, 2, 2, 'Test Marldohn Rubinos', NULL, 10.00, 100.00, 0.00, 1000.00, '2026-08-18 20:41:45'),
+(3, 3, 2, 'Test Marldohn Rubinos', NULL, 1.00, 100.00, 0.00, 100.00, '2026-08-18 20:50:46');
 
 -- --------------------------------------------------------
 
@@ -846,6 +913,15 @@ CREATE TABLE `pos_stock_movements` (
   `created_by` int(11) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `pos_stock_movements`
+--
+
+INSERT INTO `pos_stock_movements` (`id`, `business_id`, `product_id`, `movement_type`, `quantity`, `unit_cost`, `previous_stock`, `new_stock`, `reference_type`, `reference_id`, `notes`, `created_by`, `created_at`) VALUES
+(1, 3, 1, 'sale', 1.00, 0.00, 15.00, 14.00, 'pos_sale', 1, 'POS Sale INV-20260818-0001', 1, '2026-08-18 20:15:20'),
+(2, 3, 2, 'sale', 10.00, 0.00, 15.00, 5.00, 'pos_sale', 2, 'POS Sale INV-20260818-0002', 5, '2026-08-18 20:41:45'),
+(3, 3, 2, 'sale', 1.00, 0.00, 5.00, 4.00, 'pos_sale', 3, 'POS Sale INV-20260818-0003', 5, '2026-08-18 20:50:46');
 
 -- --------------------------------------------------------
 
@@ -1243,7 +1319,7 @@ ALTER TABLE `businesses`
 -- AUTO_INCREMENT for table `business_users`
 --
 ALTER TABLE `business_users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- AUTO_INCREMENT for table `inventory_adjustments`
@@ -1261,19 +1337,19 @@ ALTER TABLE `inventory_adjustment_items`
 -- AUTO_INCREMENT for table `inventory_brands`
 --
 ALTER TABLE `inventory_brands`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `inventory_categories`
 --
 ALTER TABLE `inventory_categories`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `inventory_products`
 --
 ALTER TABLE `inventory_products`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
 
 --
 -- AUTO_INCREMENT for table `inventory_purchase_items`
@@ -1291,13 +1367,13 @@ ALTER TABLE `inventory_purchase_orders`
 -- AUTO_INCREMENT for table `inventory_stock_movements`
 --
 ALTER TABLE `inventory_stock_movements`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `inventory_suppliers`
 --
 ALTER TABLE `inventory_suppliers`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `inventory_units`
@@ -1387,7 +1463,7 @@ ALTER TABLE `pos_categories`
 -- AUTO_INCREMENT for table `pos_customers`
 --
 ALTER TABLE `pos_customers`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `pos_expenses`
@@ -1399,25 +1475,25 @@ ALTER TABLE `pos_expenses`
 -- AUTO_INCREMENT for table `pos_payments`
 --
 ALTER TABLE `pos_payments`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `pos_products`
 --
 ALTER TABLE `pos_products`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `pos_sales`
 --
 ALTER TABLE `pos_sales`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `pos_sale_items`
 --
 ALTER TABLE `pos_sale_items`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `pos_stock_adjustments`
@@ -1435,7 +1511,7 @@ ALTER TABLE `pos_stock_adjustment_items`
 -- AUTO_INCREMENT for table `pos_stock_movements`
 --
 ALTER TABLE `pos_stock_movements`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `pos_units`

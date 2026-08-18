@@ -424,6 +424,7 @@ $stmt = $pdo->prepare("
         AND p.business_id = s.business_id
 
     WHERE s.business_id = ?
+    AND s.created_by = ?
 
     GROUP BY
         s.id,
@@ -442,7 +443,10 @@ $stmt = $pdo->prepare("
     ORDER BY s.id DESC
 ");
 
-$stmt->execute([$businessId]);
+$stmt->execute([
+    $businessId,
+    $userId
+]);
 
 $suppliers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 

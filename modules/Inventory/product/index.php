@@ -1,955 +1,475 @@
+
+
 <?php
 
-$pdo = Database::getConnection();
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
-$businessId = $_SESSION['business_id'] ?? null;
-$userId = $_SESSION['user_id'] ?? null;
-
-if (!$businessId || !$userId) {
-    header('Location: index.php?page=login');
-    exit;
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
 
-$error = '';
+require_once __DIR__ . '/../../../config/db.php';
+
+if (!isset($pdo)) {
+    $pdo = Database::getConnection();
+}
+
+$user_id = (int)($_SESSION['user_id'] ?? 0);
+$business_id = (int)($_SESSION['business_id'] ?? 0);
+$businessName = $_SESSION['business_name'] ?? 'Business';
+
 $success = '';
+$error = '';
 
-/* =========================================================
-   HELPER
-========================================================= */
-
-function redirectProductsPage()
-{
-    header('Location: index.php?page=inventory_products');
+if (!$business_id) {
+    header('Location: index.php?page=select_business');
     exit;
 }
 
-/* =========================================================
-   POST ACTIONS
-========================================================= */
+
+/*
+|--------------------------------------------------------------------------
+| PROCESS POST REQUESTS
+|--------------------------------------------------------------------------
+*/
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $action = $_POST['action'] ?? '';
 
-    /* =====================================================
-       CREATE PRODUCT
-    ===================================================== */
+    try {
 
-    if ($action === 'create_product') {
+        /*
+        |--------------------------------------------------------------------------
+        | CREATE PRODUCT
+        |--------------------------------------------------------------------------
+        */
 
-        $name = trim($_POST['name'] ?? '');
-        $sku = trim($_POST['sku'] ?? '');
-        $barcode = trim($_POST['barcode'] ?? '');
-        $description = trim($_POST['description'] ?? '');
+        if ($action === 'create_product') {
 
-        $categoryId = !empty($_POST['category_id'])
-            ? (int)$_POST['category_id']
-            : null;
+            $name = trim($_POST['name'] ?? '');
+            $sku = trim($_POST['sku'] ?? '');
+            $barcode = trim($_POST['barcode'] ?? '');
+            $description = trim($_POST['description'] ?? '');
 
-        $brandId = !empty($_POST['brand_id'])
-            ? (int)$_POST['brand_id']
-            : null;
+            $category_id = !empty($_POST['category_id'])
+                ? (int)$_POST['category_id']
+                : null;
 
-        $unitId = !empty($_POST['unit_id'])
-            ? (int)$_POST['unit_id']
-            : null;
+            $brand_id = !empty($_POST['brand_id'])
+                ? (int)$_POST['brand_id']
+                : null;
 
-        $supplierId = !empty($_POST['supplier_id'])
-            ? (int)$_POST['supplier_id']
-            : null;
+            $unit_id = !empty($_POST['unit_id'])
+                ? (int)$_POST['unit_id']
+                : null;
 
-        $costPrice = max(0, (float)($_POST['cost_price'] ?? 0));
-        $sellingPrice = max(0, (float)($_POST['selling_price'] ?? 0));
-        $wholesalePrice = max(0, (float)($_POST['wholesale_price'] ?? 0));
-        $minimumStock = max(0, (float)($_POST['minimum_stock'] ?? 0));
+            $supplier_id = !empty($_POST['supplier_id'])
+                ? (int)$_POST['supplier_id']
+                : null;
 
-        $maximumStock = ($_POST['maximum_stock'] ?? '') !== ''
-            ? max(0, (float)$_POST['maximum_stock'])
-            : null;
+            $cost_price = (float)($_POST['cost_price'] ?? 0);
+            $selling_price = (float)($_POST['selling_price'] ?? 0);
+            $wholesale_price = (float)($_POST['wholesale_price'] ?? 0);
 
-        $currentStock = max(0, (float)($_POST['current_stock'] ?? 0));
+            $minimum_stock = (float)($_POST['minimum_stock'] ?? 0);
+            $current_stock = (float)($_POST['current_stock'] ?? 0);
 
-        if ($name === '') {
+            $maximum_stock = (
+                isset($_POST['maximum_stock']) &&
+                $_POST['maximum_stock'] !== ''
+            )
+                ? (float)$_POST['maximum_stock']
+                : null;
 
-            $error = 'Product name is required.';
 
-        } else {
+            /*
+            |--------------------------------------------------------------------------
+            | VALIDATION
+            |--------------------------------------------------------------------------
+            */
 
-            try {
-
-                $pdo->beginTransaction();
-
-                /* CHECK SKU */
-
-                if ($sku !== '') {
-
-                    $stmt = $pdo->prepare("
-                        SELECT id
-                        FROM inventory_products
-                        WHERE business_id = ?
-                        AND sku = ?
-                        LIMIT 1
-                    ");
-
-                    $stmt->execute([
-                        $businessId,
-                        $sku
-                    ]);
-
-                    if ($stmt->fetch()) {
-                        throw new Exception(
-                            'SKU already exists for this business.'
-                        );
-                    }
-                }
-
-                /* CHECK BARCODE */
-
-                if ($barcode !== '') {
-
-                    $stmt = $pdo->prepare("
-                        SELECT id
-                        FROM inventory_products
-                        WHERE business_id = ?
-                        AND barcode = ?
-                        LIMIT 1
-                    ");
-
-                    $stmt->execute([
-                        $businessId,
-                        $barcode
-                    ]);
-
-                    if ($stmt->fetch()) {
-                        throw new Exception(
-                            'Barcode already exists for this business.'
-                        );
-                    }
-                }
-
-                /* INSERT PRODUCT */
-
-                $stmt = $pdo->prepare("
-                    INSERT INTO inventory_products (
-                        business_id,
-                        category_id,
-                        brand_id,
-                        unit_id,
-                        supplier_id,
-                        name,
-                        sku,
-                        barcode,
-                        description,
-                        cost_price,
-                        selling_price,
-                        wholesale_price,
-                        minimum_stock,
-                        maximum_stock,
-                        current_stock,
-                        status,
-                        created_by
-                    )
-                    VALUES (
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?
-                    )
-                ");
-
-                $stmt->execute([
-                    $businessId,
-                    $categoryId,
-                    $brandId,
-                    $unitId,
-                    $supplierId,
-                    $name,
-                    $sku !== '' ? $sku : null,
-                    $barcode !== '' ? $barcode : null,
-                    $description !== '' ? $description : null,
-                    $costPrice,
-                    $sellingPrice,
-                    $wholesalePrice,
-                    $minimumStock,
-                    $maximumStock,
-                    $currentStock,
-                    $userId
-                ]);
-
-                $productId = $pdo->lastInsertId();
-
-                /* OPENING STOCK MOVEMENT */
-
-                if ($currentStock > 0) {
-
-                    $stmt = $pdo->prepare("
-                        INSERT INTO inventory_stock_movements (
-                            business_id,
-                            product_id,
-                            movement_type,
-                            quantity,
-                            unit_cost,
-                            previous_stock,
-                            new_stock,
-                            reference_type,
-                            reference_id,
-                            notes,
-                            created_by
-                        )
-                        VALUES (
-                            ?, ?, 'opening_stock', ?, ?, 0, ?,
-                            'product', ?, ?, ?
-                        )
-                    ");
-
-                    $stmt->execute([
-                        $businessId,
-                        $productId,
-                        $currentStock,
-                        $costPrice,
-                        $currentStock,
-                        $productId,
-                        'Opening stock',
-                        $userId
-                    ]);
-                }
-
-                $pdo->commit();
-
-                $success = 'Product created successfully.';
-
-            } catch (Throwable $e) {
-
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-
-                $error = $e->getMessage();
+            if ($name === '') {
+                throw new Exception('Product name is required.');
             }
-        }
-    }
 
-    /* =====================================================
-       EDIT PRODUCT
-    ===================================================== */
+            if ($cost_price < 0) {
+                throw new Exception('Cost price cannot be negative.');
+            }
 
-    elseif ($action === 'edit_product') {
+            if ($selling_price < 0) {
+                throw new Exception('Selling price cannot be negative.');
+            }
 
-        $productId = (int)($_POST['product_id'] ?? 0);
+            if ($wholesale_price < 0) {
+                throw new Exception('Wholesale price cannot be negative.');
+            }
 
-        $name = trim($_POST['name'] ?? '');
-        $sku = trim($_POST['sku'] ?? '');
-        $barcode = trim($_POST['barcode'] ?? '');
-        $description = trim($_POST['description'] ?? '');
+            if ($minimum_stock < 0) {
+                throw new Exception('Minimum stock cannot be negative.');
+            }
 
-        $categoryId = !empty($_POST['category_id'])
-            ? (int)$_POST['category_id']
-            : null;
+            if ($current_stock < 0) {
+                throw new Exception('Opening stock cannot be negative.');
+            }
 
-        $brandId = !empty($_POST['brand_id'])
-            ? (int)$_POST['brand_id']
-            : null;
+            if ($maximum_stock !== null && $maximum_stock < 0) {
+                throw new Exception('Maximum stock cannot be negative.');
+            }
 
-        $unitId = !empty($_POST['unit_id'])
-            ? (int)$_POST['unit_id']
-            : null;
+            if (
+                $maximum_stock !== null &&
+                $maximum_stock > 0 &&
+                $current_stock > $maximum_stock
+            ) {
+                throw new Exception(
+                    'Opening stock cannot be greater than maximum stock.'
+                );
+            }
 
-        $supplierId = !empty($_POST['supplier_id'])
-            ? (int)$_POST['supplier_id']
-            : null;
 
-        $costPrice = max(0, (float)($_POST['cost_price'] ?? 0));
-        $sellingPrice = max(0, (float)($_POST['selling_price'] ?? 0));
-        $wholesalePrice = max(0, (float)($_POST['wholesale_price'] ?? 0));
-        $minimumStock = max(0, (float)($_POST['minimum_stock'] ?? 0));
+            /*
+            |--------------------------------------------------------------------------
+            | CHECK DUPLICATE SKU
+            |--------------------------------------------------------------------------
+            */
 
-        $maximumStock = ($_POST['maximum_stock'] ?? '') !== ''
-            ? max(0, (float)$_POST['maximum_stock'])
-            : null;
-
-        if ($productId <= 0) {
-
-            $error = 'Invalid product.';
-
-        } elseif ($name === '') {
-
-            $error = 'Product name is required.';
-
-        } else {
-
-            try {
-
-                $pdo->beginTransaction();
-
-                /* VERIFY PRODUCT */
+            if ($sku !== '') {
 
                 $stmt = $pdo->prepare("
                     SELECT id
                     FROM inventory_products
-                    WHERE id = ?
-                    AND business_id = ?
+                    WHERE business_id = ?
+                    AND created_by = ?
+                    AND sku = ?
                     LIMIT 1
                 ");
 
                 $stmt->execute([
-                    $productId,
-                    $businessId
+                    $business_id,
+                    $user_id,
+                    $sku
                 ]);
 
-                if (!$stmt->fetch()) {
-                    throw new Exception('Product not found.');
+                if ($stmt->fetch()) {
+                    throw new Exception(
+                        'The SKU already exists for this business.'
+                    );
                 }
-
-                /* CHECK SKU */
-
-                if ($sku !== '') {
-
-                    $stmt = $pdo->prepare("
-                        SELECT id
-                        FROM inventory_products
-                        WHERE business_id = ?
-                        AND sku = ?
-                        AND id <> ?
-                        LIMIT 1
-                    ");
-
-                    $stmt->execute([
-                        $businessId,
-                        $sku,
-                        $productId
-                    ]);
-
-                    if ($stmt->fetch()) {
-                        throw new Exception(
-                            'SKU already exists for this business.'
-                        );
-                    }
-                }
-
-                /* CHECK BARCODE */
-
-                if ($barcode !== '') {
-
-                    $stmt = $pdo->prepare("
-                        SELECT id
-                        FROM inventory_products
-                        WHERE business_id = ?
-                        AND barcode = ?
-                        AND id <> ?
-                        LIMIT 1
-                    ");
-
-                    $stmt->execute([
-                        $businessId,
-                        $barcode,
-                        $productId
-                    ]);
-
-                    if ($stmt->fetch()) {
-                        throw new Exception(
-                            'Barcode already exists for this business.'
-                        );
-                    }
-                }
-
-                /* UPDATE */
-
-                $stmt = $pdo->prepare("
-                    UPDATE inventory_products
-                    SET
-                        category_id = ?,
-                        brand_id = ?,
-                        unit_id = ?,
-                        supplier_id = ?,
-                        name = ?,
-                        sku = ?,
-                        barcode = ?,
-                        description = ?,
-                        cost_price = ?,
-                        selling_price = ?,
-                        wholesale_price = ?,
-                        minimum_stock = ?,
-                        maximum_stock = ?,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                    AND business_id = ?
-                ");
-
-                $stmt->execute([
-                    $categoryId,
-                    $brandId,
-                    $unitId,
-                    $supplierId,
-                    $name,
-                    $sku !== '' ? $sku : null,
-                    $barcode !== '' ? $barcode : null,
-                    $description !== '' ? $description : null,
-                    $costPrice,
-                    $sellingPrice,
-                    $wholesalePrice,
-                    $minimumStock,
-                    $maximumStock,
-                    $productId,
-                    $businessId
-                ]);
-
-                $pdo->commit();
-
-                $success = 'Product updated successfully.';
-
-            } catch (Throwable $e) {
-
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-
-                $error = $e->getMessage();
-            }
-        }
-    }
-
-    /* =====================================================
-       ADJUST STOCK
-    ===================================================== */
-
-    elseif ($action === 'adjust_stock') {
-
-        $productId = (int)($_POST['product_id'] ?? 0);
-
-        $movementType = $_POST['movement_type'] ?? '';
-
-        $quantity = max(
-            0,
-            (float)($_POST['quantity'] ?? 0)
-        );
-
-        $reason = trim($_POST['reason'] ?? '');
-        $notes = trim($_POST['notes'] ?? '');
-
-        if ($productId <= 0) {
-
-            $error = 'Invalid product.';
-
-        } elseif (!in_array(
-            $movementType,
-            ['stock_in', 'stock_out'],
-            true
-        )) {
-
-            $error = 'Invalid stock movement type.';
-
-        } elseif ($quantity <= 0) {
-
-            $error = 'Quantity must be greater than zero.';
-
-        } elseif ($reason === '') {
-
-            $error = 'Reason is required.';
-
-        } else {
-
-            try {
-
-                $pdo->beginTransaction();
-
-                /* LOCK PRODUCT */
-
-                $stmt = $pdo->prepare("
-                    SELECT
-                        id,
-                        current_stock,
-                        cost_price
-                    FROM inventory_products
-                    WHERE id = ?
-                    AND business_id = ?
-                    FOR UPDATE
-                ");
-
-                $stmt->execute([
-                    $productId,
-                    $businessId
-                ]);
-
-                $product = $stmt->fetch(PDO::FETCH_ASSOC);
-
-                if (!$product) {
-                    throw new Exception('Product not found.');
-                }
-
-                $previousStock = (float)$product['current_stock'];
-                $unitCost = (float)$product['cost_price'];
-
-                /* CALCULATE NEW STOCK */
-
-                if ($movementType === 'stock_in') {
-
-                    $newStock = $previousStock + $quantity;
-
-                } else {
-
-                    if ($quantity > $previousStock) {
-                        throw new Exception(
-                            'Stock out quantity cannot be greater than the current stock.'
-                        );
-                    }
-
-                    $newStock = $previousStock - $quantity;
-                }
-
-                /* UPDATE PRODUCT STOCK */
-
-                $stmt = $pdo->prepare("
-                    UPDATE inventory_products
-                    SET
-                        current_stock = ?,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                    AND business_id = ?
-                ");
-
-                $stmt->execute([
-                    $newStock,
-                    $productId,
-                    $businessId
-                ]);
-
-                /* STOCK MOVEMENT */
-
-                $stmt = $pdo->prepare("
-                    INSERT INTO inventory_stock_movements (
-                        business_id,
-                        product_id,
-                        movement_type,
-                        quantity,
-                        unit_cost,
-                        previous_stock,
-                        new_stock,
-                        reference_type,
-                        reference_id,
-                        notes,
-                        created_by
-                    )
-                    VALUES (
-                        ?, ?, ?, ?, ?, ?, ?,
-                        'manual_adjustment', ?, ?, ?
-                    )
-                ");
-
-                $movementNotes = $reason;
-
-                if ($notes !== '') {
-                    $movementNotes .= ' - ' . $notes;
-                }
-
-                $stmt->execute([
-                    $businessId,
-                    $productId,
-                    $movementType,
-                    $quantity,
-                    $unitCost,
-                    $previousStock,
-                    $newStock,
-                    $productId,
-                    $movementNotes,
-                    $userId
-                ]);
-
-                $pdo->commit();
-
-                $success = 'Stock adjusted successfully.';
-
-            } catch (Throwable $e) {
-
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-
-                $error = $e->getMessage();
-            }
-        }
-    }
-
-    /* =====================================================
-       TOGGLE PRODUCT STATUS
-    ===================================================== */
-
-    elseif ($action === 'toggle_product_status') {
-
-        $productId = (int)($_POST['product_id'] ?? 0);
-
-        try {
-
-            $stmt = $pdo->prepare("
-                SELECT status
-                FROM inventory_products
-                WHERE id = ?
-                AND business_id = ?
-                LIMIT 1
-            ");
-
-            $stmt->execute([
-                $productId,
-                $businessId
-            ]);
-
-            $product = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$product) {
-                throw new Exception('Product not found.');
             }
 
-            $newStatus =
-                $product['status'] === 'active'
-                ? 'inactive'
-                : 'active';
-
-            $stmt = $pdo->prepare("
-                UPDATE inventory_products
-                SET
-                    status = ?,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                AND business_id = ?
-            ");
-
-            $stmt->execute([
-                $newStatus,
-                $productId,
-                $businessId
-            ]);
-
-            $success =
-                $newStatus === 'active'
-                ? 'Product enabled successfully.'
-                : 'Product disabled successfully.';
-
-        } catch (Throwable $e) {
-
-            $error = $e->getMessage();
-        }
-    }
-
-    /* =====================================================
-       DUPLICATE PRODUCT
-    ===================================================== */
-
-    elseif ($action === 'duplicate_product') {
-
-        $productId = (int)($_POST['product_id'] ?? 0);
-
-        try {
-
-            $pdo->beginTransaction();
-
-            $stmt = $pdo->prepare("
-                SELECT *
-                FROM inventory_products
-                WHERE id = ?
-                AND business_id = ?
-                LIMIT 1
-            ");
-
-            $stmt->execute([
-                $productId,
-                $businessId
-            ]);
-
-            $product = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$product) {
-                throw new Exception('Product not found.');
-            }
-
-            $newName = $product['name'] . ' (Copy)';
 
             /*
-             * SKU and barcode are intentionally blank because
-             * they are normally unique.
-             */
+            |--------------------------------------------------------------------------
+            | CHECK DUPLICATE BARCODE
+            |--------------------------------------------------------------------------
+            */
 
-            $newSku = null;
-            $newBarcode = null;
+            if ($barcode !== '') {
+
+                $stmt = $pdo->prepare("
+                    SELECT id
+                    FROM inventory_products
+                    WHERE business_id = ?
+                    AND created_by = ?
+                    AND barcode = ?
+                    LIMIT 1
+                ");
+
+                $stmt->execute([
+                    $business_id,
+                    $user_id,
+                    $barcode
+                ]);
+
+                if ($stmt->fetch()) {
+                    throw new Exception(
+                        'The barcode already exists for this business.'
+                    );
+                }
+            }
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | INSERT PRODUCT
+            |--------------------------------------------------------------------------
+            */
 
             $stmt = $pdo->prepare("
                 INSERT INTO inventory_products (
                     business_id,
-                    category_id,
-                    brand_id,
-                    unit_id,
-                    supplier_id,
                     name,
                     sku,
                     barcode,
                     description,
+                    category_id,
+                    brand_id,
+                    unit_id,
+                    supplier_id,
                     cost_price,
                     selling_price,
                     wholesale_price,
+                    current_stock,
                     minimum_stock,
                     maximum_stock,
-                    current_stock,
-                    image,
                     status,
                     created_by
-                )
-                VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'active', ?
+                ) VALUES (
+                    :business_id,
+                    :name,
+                    :sku,
+                    :barcode,
+                    :description,
+                    :category_id,
+                    :brand_id,
+                    :unit_id,
+                    :supplier_id,
+                    :cost_price,
+                    :selling_price,
+                    :wholesale_price,
+                    :current_stock,
+                    :minimum_stock,
+                    :maximum_stock,
+                    'active',
+                    :created_by
                 )
             ");
 
             $stmt->execute([
-                $businessId,
-                $product['category_id'],
-                $product['brand_id'],
-                $product['unit_id'],
-                $product['supplier_id'],
-                $newName,
-                $newSku,
-                $newBarcode,
-                $product['description'],
-                $product['cost_price'],
-                $product['selling_price'],
-                $product['wholesale_price'],
-                $product['minimum_stock'],
-                $product['maximum_stock'],
-                $product['image'],
-                $userId
+                ':business_id' => $business_id,
+                ':name' => $name,
+                ':sku' => $sku !== '' ? $sku : null,
+                ':barcode' => $barcode !== '' ? $barcode : null,
+                ':description' => $description !== '' ? $description : null,
+                ':category_id' => $category_id,
+                ':brand_id' => $brand_id,
+                ':unit_id' => $unit_id,
+                ':supplier_id' => $supplier_id,
+                ':cost_price' => $cost_price,
+                ':selling_price' => $selling_price,
+                ':wholesale_price' => $wholesale_price,
+                ':current_stock' => $current_stock,
+                ':minimum_stock' => $minimum_stock,
+                ':maximum_stock' => $maximum_stock,
+                ':created_by' => $user_id
             ]);
 
-            $pdo->commit();
-
-            $success =
-                'Product duplicated successfully. ' .
-                'The duplicate was created with zero stock.';
-
-        } catch (Throwable $e) {
-
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-
-            $error = $e->getMessage();
+            $success = 'Product "' . $name . '" was created successfully.';
         }
-    }
 
-    /* =====================================================
-       DELETE PRODUCT
-    ===================================================== */
+        /*
+        |--------------------------------------------------------------------------
+        | DELETE PRODUCT
+        |--------------------------------------------------------------------------
+        */
 
-    elseif ($action === 'delete_product') {
+        elseif ($action === 'delete_product') {
 
-        $productId = (int)($_POST['product_id'] ?? 0);
+            $product_id = (int)($_POST['product_id'] ?? 0);
 
-        try {
-
-            $pdo->beginTransaction();
-
-            /* VERIFY PRODUCT */
-
-            $stmt = $pdo->prepare("
-                SELECT id
-                FROM inventory_products
-                WHERE id = ?
-                AND business_id = ?
-                LIMIT 1
-            ");
-
-            $stmt->execute([
-                $productId,
-                $businessId
-            ]);
-
-            if (!$stmt->fetch()) {
-                throw new Exception('Product not found.');
+            if ($product_id <= 0) {
+                throw new Exception('Invalid product ID for deletion.');
             }
-
-            /*
-             * Delete stock movements first.
-             * This prevents foreign-key errors if product_id
-             * is referenced by inventory_stock_movements.
-             */
-
-            $stmt = $pdo->prepare("
-                DELETE FROM inventory_stock_movements
-                WHERE product_id = ?
-                AND business_id = ?
-            ");
-
-            $stmt->execute([
-                $productId,
-                $businessId
-            ]);
-
-            /* DELETE PRODUCT */
 
             $stmt = $pdo->prepare("
                 DELETE FROM inventory_products
                 WHERE id = ?
                 AND business_id = ?
+                AND created_by = ?
             ");
 
             $stmt->execute([
-                $productId,
-                $businessId
+                $product_id,
+                $business_id,
+                $user_id
             ]);
 
-            $pdo->commit();
-
-            $success = 'Product deleted successfully.';
-
-        } catch (Throwable $e) {
-
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
+            if ($stmt->rowCount() === 0) {
+                throw new Exception('Product could not be deleted or was not found.');
             }
 
-            $error = $e->getMessage();
+            $success = 'Product deleted successfully.';
         }
+    }
+
+    catch (Throwable $e) {
+
+        $error = $e->getMessage();
+
+        error_log(
+            'Inventory Product Error: ' .
+            $e->getMessage()
+        );
     }
 }
 
-/* =========================================================
-   LOAD CATEGORIES
-========================================================= */
+
+/*
+|--------------------------------------------------------------------------
+| FETCH CATEGORIES
+|--------------------------------------------------------------------------
+*/
 
 $stmt = $pdo->prepare("
     SELECT id, name
     FROM inventory_categories
     WHERE business_id = ?
-    AND status = 'active'
+    AND created_by = ?
     ORDER BY name ASC
 ");
 
-$stmt->execute([$businessId]);
+$stmt->execute([
+    $business_id,
+    $user_id
+]);
+
 $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-/* =========================================================
-   LOAD BRANDS
-========================================================= */
+
+/*
+|--------------------------------------------------------------------------
+| FETCH BRANDS
+|--------------------------------------------------------------------------
+*/
 
 $stmt = $pdo->prepare("
     SELECT id, name
     FROM inventory_brands
     WHERE business_id = ?
-    AND status = 'active'
+    AND created_by = ?
     ORDER BY name ASC
 ");
 
-$stmt->execute([$businessId]);
+$stmt->execute([
+    $business_id,
+    $user_id
+]);
+
 $brands = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-/* =========================================================
-   LOAD UNITS
-========================================================= */
+
+/*
+|--------------------------------------------------------------------------
+| FETCH UNITS
+|--------------------------------------------------------------------------
+*/
 
 $stmt = $pdo->prepare("
     SELECT id, name, abbreviation
     FROM inventory_units
     WHERE business_id = ?
-    AND status = 'active'
+    AND created_by = ?
     ORDER BY name ASC
 ");
 
-$stmt->execute([$businessId]);
+$stmt->execute([
+    $business_id,
+    $user_id
+]);
+
 $units = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-/* =========================================================
-   LOAD SUPPLIERS
-========================================================= */
+
+/*
+|--------------------------------------------------------------------------
+| FETCH SUPPLIERS
+|--------------------------------------------------------------------------
+*/
 
 $stmt = $pdo->prepare("
     SELECT id, name
     FROM inventory_suppliers
     WHERE business_id = ?
-    AND status = 'active'
+    AND created_by = ?
     ORDER BY name ASC
 ");
 
-$stmt->execute([$businessId]);
+$stmt->execute([
+    $business_id,
+    $user_id
+]);
+
 $suppliers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-/* =========================================================
-   LOAD PRODUCTS
-========================================================= */
 
-$stmt = $pdo->prepare("
+/*
+|--------------------------------------------------------------------------
+| FETCH PRODUCTS
+|--------------------------------------------------------------------------
+*/
+
+$productStmt = $pdo->prepare("
     SELECT
-        p.id,
-        p.business_id,
-        p.category_id,
-        p.brand_id,
-        p.unit_id,
-        p.supplier_id,
-        p.name,
-        p.sku,
-        p.barcode,
-        p.description,
-        p.cost_price,
-        p.selling_price,
-        p.wholesale_price,
-        p.minimum_stock,
-        p.maximum_stock,
-        p.current_stock,
-        p.image,
-        p.status,
-        p.created_at,
-        p.updated_at,
-
+        p.*,
         c.name AS category_name,
         b.name AS brand_name,
         u.name AS unit_name,
         u.abbreviation AS unit_abbreviation,
         s.name AS supplier_name
-
     FROM inventory_products p
 
     LEFT JOIN inventory_categories c
-        ON c.id = p.category_id
+        ON p.category_id = c.id
         AND c.business_id = p.business_id
+        AND c.created_by = p.created_by
 
     LEFT JOIN inventory_brands b
-        ON b.id = p.brand_id
+        ON p.brand_id = b.id
         AND b.business_id = p.business_id
+        AND b.created_by = p.created_by
 
     LEFT JOIN inventory_units u
-        ON u.id = p.unit_id
+        ON p.unit_id = u.id
         AND u.business_id = p.business_id
+        AND u.created_by = p.created_by
 
     LEFT JOIN inventory_suppliers s
-        ON s.id = p.supplier_id
+        ON p.supplier_id = s.id
         AND s.business_id = p.business_id
+        AND s.created_by = p.created_by
 
     WHERE p.business_id = ?
+    AND p.created_by = ?
 
     ORDER BY p.id DESC
 ");
 
-$stmt->execute([$businessId]);
+$productStmt->execute([
+    $business_id,
+    $user_id
+]);
 
-$products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$products = $productStmt->fetchAll(PDO::FETCH_ASSOC);
 
-/* =========================================================
-   PRODUCT SUMMARY
-========================================================= */
+
+/*
+|--------------------------------------------------------------------------
+| CALCULATE DASHBOARD METRICS
+|--------------------------------------------------------------------------
+*/
 
 $totalProducts = count($products);
+
+$totalStock = 0; // <-- Added initialization to prevent the undefined variable warning
 $lowStockProducts = 0;
 $outOfStockProducts = 0;
 
-foreach ($products as $product) {
+foreach ($products as $p) {
 
-    $currentStock = (float)($product['current_stock'] ?? 0);
-    $minimumStock = (float)($product['minimum_stock'] ?? 0);
+    $stock = (float)($p['current_stock'] ?? 0);
+    $minStock = (float)($p['minimum_stock'] ?? 0);
 
-    if ($currentStock <= 0) {
+    $totalStock += $stock;
 
+    if ($stock <= 0) {
         $outOfStockProducts++;
-
-    } elseif ($currentStock <= $minimumStock) {
-
+    } elseif ($stock <= $minStock) {
         $lowStockProducts++;
     }
 }
-
-$activePage = 'inventory_products';
-$pageTitle = 'Products - Inventory';
-$businessName = $_SESSION['business_name'] ?? 'Business';
 
 ?>
 
@@ -3424,302 +2944,49 @@ Save Changes
 
 </div>
 
-
-<!-- =========================================================
-     ADJUST STOCK MODAL
-========================================================= -->
-
-<div
-    class="modal fade product-modal"
-    id="stockModal"
-    tabindex="-1"
->
-
-<div class="modal-dialog modal-dialog-centered">
-
-<div class="modal-content shadow-lg">
-
-<div class="modal-header">
-
-<h5 class="modal-title fw-bold">
-
-<i class="bi bi-box-arrow-in-down text-success me-2"></i>
-
-Adjust Stock
-
-</h5>
-
-<button
-    type="button"
-    class="btn-close"
-    data-bs-dismiss="modal"
-></button>
-
-</div>
-
-<form method="POST">
-
-<input
-    type="hidden"
-    name="action"
-    value="adjust_stock"
->
-
-<input
-    type="hidden"
-    name="product_id"
-    id="stockProductId"
->
-
-<div class="modal-body">
-
-<div class="mb-3">
-
-<div class="text-muted small">
-Product
-</div>
-
-<div
-    id="stockProductName"
-    class="fw-bold fs-5"
->
--
-</div>
-
-</div>
-
-
-<div class="stock-preview bg-body-secondary mb-4">
-
-<div class="row text-center">
-
-<div class="col-6">
-
-<div class="text-muted small">
-Current Stock
-</div>
-
-<div
-    id="stockCurrent"
-    class="stock-preview-current"
->
-0
-</div>
-
-</div>
-
-<div class="col-6 border-start">
-
-<div class="text-muted small">
-New Stock
-</div>
-
-<div
-    id="stockNew"
-    class="stock-preview-new text-primary"
->
-0
-</div>
-
-</div>
-
-</div>
-
-</div>
-
-
-<div class="mb-3">
-
-<label class="form-label fw-semibold">
-Stock Movement
-</label>
-
-<div class="row g-2">
-
-<div class="col-6">
-
-<input
-    type="radio"
-    class="btn-check"
-    name="movement_type"
-    id="stockIn"
-    value="stock_in"
-    checked
->
-
-<label
-    class="btn btn-outline-success w-100 py-2"
-    for="stockIn"
->
-
-<i class="bi bi-box-arrow-in-down me-1"></i>
-
-Stock In
-
-</label>
-
-</div>
-
-<div class="col-6">
-
-<input
-    type="radio"
-    class="btn-check"
-    name="movement_type"
-    id="stockOut"
-    value="stock_out"
->
-
-<label
-    class="btn btn-outline-danger w-100 py-2"
-    for="stockOut"
->
-
-<i class="bi bi-box-arrow-up me-1"></i>
-
-Stock Out
-
-</label>
-
-</div>
-
-</div>
-
-</div>
-
-
-<div class="mb-3">
-
-<label class="form-label fw-semibold">
-
-Reason
-
-<span class="text-danger">*</span>
-
-</label>
-
-<select
-    name="reason"
-    id="stockReason"
-    class="form-select"
-    required
->
-
-<option value="">
-Select Reason
-</option>
-
-<option value="Purchase">
-Purchase
-</option>
-
-<option value="Customer Return">
-Customer Return
-</option>
-
-<option value="Stock Correction">
-Stock Correction
-</option>
-
-<option value="Damaged">
-Damaged
-</option>
-
-<option value="Expired">
-Expired
-</option>
-
-<option value="Lost">
-Lost
-</option>
-
-<option value="Internal Use">
-Internal Use
-</option>
-
-<option value="Other">
-Other
-</option>
-
-</select>
-
-</div>
-
-
-<div class="mb-3">
-
-<label class="form-label fw-semibold">
-
-Quantity
-
-<span class="text-danger">*</span>
-
-</label>
-
-<input
-    type="number"
-    name="quantity"
-    id="stockQuantity"
-    class="form-control"
-    min="0.01"
-    step="0.01"
-    value="1"
-    required
->
-
-</div>
-
-
-<div class="mb-3">
-
-<label class="form-label fw-semibold">
-
-Notes
-
-<span class="text-muted fw-normal">
-(Optional)
-</span>
-
-</label>
-
-<textarea
-    name="notes"
-    class="form-control"
-    rows="3"
-    placeholder="Additional notes..."
-></textarea>
-
-</div>
-
-</div>
-
-<div class="modal-footer">
-
-<button
-    type="button"
-    class="btn btn-light"
-    data-bs-dismiss="modal"
->
-Cancel
-</button>
-
-<button
-    type="submit"
-    class="btn btn-success fw-bold"
->
-
-<i class="bi bi-check-lg me-1"></i>
-
-Save Adjustment
-
-</button>
-
-</div>
-
-</form>
-
-</div>
-
+<!-- Inside your modal -->
+<div class="modal fade" id="stockModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form method="POST" action="">
+            <!-- ADD THIS HIDDEN INPUT IF IT'S MISSING -->
+            <input type="hidden" name="action" value="adjust_stock">
+            
+            <!-- Hidden input for Product ID -->
+            <input type="hidden" name="product_id" id="stockProductId">
+
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Adjust Stock: <span id="stockProductName"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Current Stock: <span id="stockCurrent">0.00</span></p>
+                    
+                    <div class="mb-3">
+                        <label for="stockQuantity" class="form-label">Quantity</label>
+                        <input type="number" class="form-control" id="stockQuantity" name="quantity" step="any" min="0" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Movement Type</label>
+                        <div>
+                            <input type="radio" id="stockIn" name="movement_type" value="stock_in" checked>
+                            <label for="stockIn">Stock In</label>
+                            
+                            <input type="radio" id="stockOut" name="movement_type" value="stock_out">
+                            <label for="stockOut">Stock Out</label>
+                        </div>
+                    </div>
+
+                    <p>New Stock Preview: <span id="stockNew">0.00</span></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </div>
+        </form>
+    </div>
 </div>
 
 </div>

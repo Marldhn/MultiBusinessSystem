@@ -363,7 +363,6 @@ $stmt = $pdo->prepare("
         b.business_id,
         b.name,
         b.status,
-        b.created_by,
         b.created_at,
         b.updated_at,
 
@@ -377,12 +376,13 @@ $stmt = $pdo->prepare("
     FROM inventory_brands b
 
     WHERE b.business_id = ?
+    AND b.created_by = ?
 
     ORDER BY b.name ASC
 ");
 
 $stmt->execute([
-    $businessId
+    $businessId,$userId
 ]);
 
 $brands = $stmt->fetchAll(PDO::FETCH_ASSOC);

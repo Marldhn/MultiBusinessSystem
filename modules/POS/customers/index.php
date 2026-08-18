@@ -1,4 +1,3 @@
-
 <?php
 $pdo = Database::getConnection();
 
@@ -51,12 +50,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add')
 
         try {
 
-            /*
-             * IMPORTANT:
-             * business_id comes ONLY from the session.
-             * The user cannot submit another business_id.
-             */
-
             $stmt = $pdo->prepare("
                 INSERT INTO pos_customers
                 (
@@ -98,7 +91,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add')
             $success = 'Customer added successfully.';
 
         } catch (Throwable $e) {
-
             $error = 'Unable to add customer. Please try again.';
         }
     }
@@ -133,15 +125,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit'
 
         try {
 
-            /*
-             * IMPORTANT:
-             * The customer ID alone is NOT enough.
-             * business_id is also checked.
-             *
-             * This prevents Business A from editing
-             * Business B's customer.
-             */
-
             $stmt = $pdo->prepare("
                 UPDATE pos_customers
                 SET
@@ -153,6 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit'
                     address = ?
                 WHERE id = ?
                 AND business_id = ?
+                AND created_by = ?
             ");
 
             $stmt->execute([
@@ -163,17 +147,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit'
                 $phone !== '' ? $phone : null,
                 $address !== '' ? $address : null,
                 $customerId,
-                $businessId
+                $businessId,
+                $userId
             ]);
 
             if ($stmt->rowCount() > 0) {
                 $success = 'Customer updated successfully.';
             } else {
-                $error = 'Customer was not found in this business.';
+                $error = 'Customer was not found in this business or unauthorized.';
             }
 
         } catch (Throwable $e) {
-
             $error = 'Unable to update customer. Please try again.';
         }
     }
@@ -193,21 +177,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggl
 
         try {
 
-            /*
-             * Again, business_id is required.
-             */
-
             $stmt = $pdo->prepare("
                 SELECT status
                 FROM pos_customers
                 WHERE id = ?
                 AND business_id = ?
+                AND created_by = ?
                 LIMIT 1
             ");
 
             $stmt->execute([
                 $customerId,
-                $businessId
+                $businessId,
+                $userId
             ]);
 
             $customer = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -224,12 +206,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggl
                     SET status = ?
                     WHERE id = ?
                     AND business_id = ?
+                    AND created_by = ?
                 ");
 
                 $stmt->execute([
                     $newStatus,
                     $customerId,
-                    $businessId
+                    $businessId,
+                    $userId
                 ]);
 
                 $success =
@@ -238,12 +222,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggl
                         : 'Customer deactivated successfully.';
 
             } else {
-
                 $error = 'Customer was not found in this business.';
             }
 
         } catch (Throwable $e) {
-
             $error = 'Unable to change customer status.';
         }
     }
@@ -269,12 +251,14 @@ try {
             phone,
             address,
             status,
-            created_at
+            created_at,
+            created_by
         FROM pos_customers
         WHERE business_id = ?
+        AND created_by = ?
     ";
 
-    $params = [$businessId];
+    $params = [$businessId, $userId];
 
     if ($search !== '') {
 
@@ -307,13 +291,11 @@ try {
     $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (Throwable $e) {
-
     $customers = [];
     $error = 'Unable to load customers.';
 }
 
 $pageTitle = 'POS Customers';
-
 ?>
 
 <!DOCTYPE html>
@@ -950,17 +932,27 @@ $initial =
 
     <div class="btn-group">
 
+        <!-- CUSTOMER DETAILS / PURCHASE HISTORY -->
+        <a
+            href="index.php?page=pos_customer_details&id=<?= e($customer['id']) ?>"
+            class="btn btn-sm btn-outline-info"
+            title="View Customer Details"
+        >
+            <i class="bi bi-person-vcard"></i>
+        </a>
+
+        <!-- EDIT -->
         <button
             type="button"
             class="btn btn-sm btn-outline-primary"
             data-bs-toggle="modal"
             data-bs-target="#editCustomerModal<?= $customer['id'] ?>"
+            title="Edit Customer"
         >
-
             <i class="bi bi-pencil"></i>
-
         </button>
 
+        <!-- ACTIVATE / DEACTIVATE -->
         <form method="POST">
 
             <input
@@ -980,9 +972,7 @@ $initial =
                 class="btn btn-sm btn-outline-<?= $customer['status'] === 'active' ? 'danger' : 'success' ?>"
                 title="<?= $customer['status'] === 'active' ? 'Deactivate' : 'Activate' ?>"
             >
-
                 <i class="bi bi-<?= $customer['status'] === 'active' ? 'person-dash' : 'person-check' ?>"></i>
-
             </button>
 
         </form>

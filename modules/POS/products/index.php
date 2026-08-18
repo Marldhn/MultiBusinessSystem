@@ -779,8 +779,6 @@ if ($page > $totalPages) {
 
 $offset =
     ($page - 1) * $perPage;
-
-
 /*
 |--------------------------------------------------------------------------
 | LOAD PRODUCTS
@@ -816,7 +814,8 @@ try {
             c.name AS category_name,
             b.name AS brand_name,
             u.name AS unit_name,
-            u.abbreviation AS unit_abbreviation
+            u.abbreviation AS unit_abbreviation,
+            usr.name AS creator_name
 
         FROM pos_products p
 
@@ -832,11 +831,16 @@ try {
             ON u.id = p.unit_id
             AND u.business_id = p.business_id
 
+        LEFT JOIN users usr
+            ON usr.id = p.created_by
+
         WHERE p.business_id = ?
+        AND p.created_by = ?
     ";
 
     $params = [
-        $businessId
+        $businessId,
+        $userId
     ];
 
 

@@ -3,6 +3,7 @@
 $pdo = Database::getConnection();
 
 $businessId = $_SESSION['business_id'] ?? null;
+$userId = (int)($_SESSION['user_id'] ?? 0);
 
 if (!$businessId) {
     header('Location: index.php?page=select_business');
@@ -26,13 +27,6 @@ $outOfStockProducts = 0;
 $inventoryValue = 0;
 
 try {
-
-    /*
-     * IMPORTANT:
-     * Everything here comes ONLY from inventory_products.
-     * POS is completely separate.
-     */
-
     $stmt = $pdo->prepare("
         SELECT
             COUNT(*) AS total_products,
@@ -63,36 +57,21 @@ try {
 
         FROM inventory_products
 
-        WHERE business_id = ?
+        WHERE business_id = ? AND created_by = ?
     ");
 
-    $stmt->execute([$businessId]);
+    $stmt->execute([$businessId, $userId]);
 
     $summary = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($summary) {
-
         $totalProducts = (int)($summary['total_products'] ?? 0);
-
-        $lowStockProducts = (int)(
-            $summary['low_stock_products'] ?? 0
-        );
-
-        $outOfStockProducts = (int)(
-            $summary['out_of_stock_products'] ?? 0
-        );
-
-        $inventoryValue = (float)(
-            $summary['inventory_value'] ?? 0
-        );
+        $lowStockProducts = (int)($summary['low_stock_products'] ?? 0);
+        $outOfStockProducts = (int)($summary['out_of_stock_products'] ?? 0);
+        $inventoryValue = (float)($summary['inventory_value'] ?? 0);
     }
 
 } catch (Throwable $e) {
-
-    /*
-     * Keep dashboard working even if the query fails.
-     */
-
     $totalProducts = 0;
     $lowStockProducts = 0;
     $outOfStockProducts = 0;
@@ -109,7 +88,6 @@ try {
 $lowStockList = [];
 
 try {
-
     $stmt = $pdo->prepare("
         SELECT
             id,
@@ -122,7 +100,8 @@ try {
 
         FROM inventory_products
 
-        WHERE business_id = ?
+        WHERE business_id = ? 
+        AND created_by = ?
         AND current_stock > 0
         AND current_stock <= minimum_stock
 
@@ -131,12 +110,11 @@ try {
         LIMIT 10
     ");
 
-    $stmt->execute([$businessId]);
+    $stmt->execute([$businessId, $userId]);
 
     $lowStockList = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (Throwable $e) {
-
     $lowStockList = [];
 }
 
@@ -150,7 +128,6 @@ try {
 $recentMovements = [];
 
 try {
-
     $stmt = $pdo->prepare("
         SELECT
             m.id,
@@ -164,7 +141,7 @@ try {
             m.reference_id,
             m.notes,
             m.created_at,
-
+            m.created_by,
             p.name AS product_name,
             p.sku AS product_sku
 
@@ -173,20 +150,20 @@ try {
         INNER JOIN inventory_products p
             ON p.id = m.product_id
             AND p.business_id = m.business_id
+            AND p.created_by = m.created_by
 
-        WHERE m.business_id = ?
+        WHERE m.business_id = ? AND m.created_by = ?
 
         ORDER BY m.id DESC
 
         LIMIT 10
     ");
 
-    $stmt->execute([$businessId]);
+    $stmt->execute([$businessId, $userId]);
 
     $recentMovements = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (Throwable $e) {
-
     $recentMovements = [];
 }
 
@@ -404,7 +381,7 @@ body{
 
 <?php
 
-$sidebarPath = __DIR__ . '/../resources/partials/InventorySidebar.php';
+$sidebarPath = __DIR__ . '/../../resources/partials/InventorySidebar.php';
 
 if (file_exists($sidebarPath)) {
     include $sidebarPath;

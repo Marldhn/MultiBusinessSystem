@@ -72,7 +72,7 @@ try {
         /*
         |--------------------------------------------------------------------------
         | IMPORTANT:
-        | business_id is ALWAYS included.
+        | business_id and created_by are included.
         |--------------------------------------------------------------------------
         */
 
@@ -102,10 +102,11 @@ try {
                 ) AS low_stock
             FROM pos_products
             WHERE business_id = ?
+            AND created_by = ?
             AND status = 'active'
         ");
 
-        $stmt->execute([$businessId]);
+        $stmt->execute([$businessId, $userId]);
 
         $summary = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -172,14 +173,14 @@ try {
                     0
                 ) AS stock_out
 
-            FROM pos_stock_movements
-
-            WHERE business_id = ?
-
-            AND DATE(created_at) = CURDATE()
+            FROM pos_stock_movements sm
+            INNER JOIN pos_products p ON p.id = sm.product_id AND p.business_id = sm.business_id
+            WHERE sm.business_id = ?
+            AND p.created_by = ?
+            AND DATE(sm.created_at) = CURDATE()
         ");
 
-        $stmt->execute([$businessId]);
+        $stmt->execute([$businessId, $userId]);
 
         $movementSummary =
             $stmt->fetch(PDO::FETCH_ASSOC);
@@ -224,6 +225,7 @@ try {
                 maximum_stock
             FROM pos_products
             WHERE business_id = ?
+            AND created_by = ?
             AND status = 'active'
             AND current_stock <= minimum_stock
             ORDER BY
@@ -232,7 +234,7 @@ try {
             LIMIT 8
         ");
 
-        $stmt->execute([$businessId]);
+        $stmt->execute([$businessId, $userId]);
 
         $lowStockList =
             $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -285,13 +287,14 @@ try {
                 AND p.business_id = sm.business_id
 
             WHERE sm.business_id = ?
+            AND p.created_by = ?
 
             ORDER BY sm.created_at DESC
 
             LIMIT 10
         ");
 
-        $stmt->execute([$businessId]);
+        $stmt->execute([$businessId, $userId]);
 
         $recentMovements =
             $stmt->fetchAll(PDO::FETCH_ASSOC);

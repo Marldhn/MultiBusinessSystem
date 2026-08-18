@@ -458,6 +458,7 @@ switch ($page) {
 
         break;
 
+  
 
     // =====================================================
     // INVENTORY SUPPLIERS
@@ -589,6 +590,29 @@ switch ($page) {
 
         break;
 
+
+            // =====================================================
+    // POS CUSTOMER DETAILS MODULE
+    // =====================================================
+
+
+        
+    case 'pos_customer_details':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        if (!isset($_SESSION['business_id'])) {
+            header('Location: index.php?page=select_business');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/POS/customers/details.php';
+
+        break;
+
            // =====================================================
     // POS PRODUCT MODULE
     // =====================================================
@@ -652,7 +676,7 @@ switch ($page) {
             exit;
         }
 
-        require_once __DIR__ . '/../modules/POS/sale/sale.php';
+        require_once __DIR__ . '/../modules/POS/sales/sale.php';
 
         break;
 
@@ -673,7 +697,72 @@ case 'pos_transactions':
         exit;
     }
 
-    require_once __DIR__ . '/../modules/POS/sale/saletransaction.php';
+    require_once __DIR__ . '/../modules/POS/sales/saletransaction.php';
+
+    break;
+
+
+            // =====================================================
+    // POS  REPORT MODULE
+    // =====================================================
+
+
+case 'pos_reports':
+
+    if (!isset($_SESSION['user_id'])) {
+        header('Location: index.php?page=login');
+        exit;
+    }
+
+    if (!isset($_SESSION['business_id'])) {
+        header('Location: index.php?page=select_business');
+        exit;
+    }
+
+    require_once __DIR__ . '/../modules/POS/reports/index.php';
+
+    break;
+
+
+           // =====================================================
+    // POS  SALES HISTORY MODULE
+    // =====================================================
+
+
+case 'pos_sales_history':
+
+    if (!isset($_SESSION['user_id'])) {
+        header('Location: index.php?page=login');
+        exit;
+    }
+
+    if (!isset($_SESSION['business_id'])) {
+        header('Location: index.php?page=select_business');
+        exit;
+    }
+
+    require_once __DIR__ . '/../modules/POS/sales/saleshistory.php';
+
+    break;
+
+
+          // =====================================================
+    // INVENTORY MODULE
+    // =====================================================
+
+  case 'pos_inventory_module':
+
+    if (!isset($_SESSION['user_id'])) {
+        header('Location: index.php?page=login');
+        exit;
+    }
+
+    if (!isset($_SESSION['business_id'])) {
+        header('Location: index.php?page=select_business');
+        exit;
+    }
+
+    require_once __DIR__ . '/../modules/POS/inventories/module.php';
 
     break;
 

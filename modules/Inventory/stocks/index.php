@@ -52,13 +52,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'stock
                 FROM inventory_products
                 WHERE id = ?
                 AND business_id = ?
+                AND created_by = ?
                 LIMIT 1
                 FOR UPDATE
             ");
 
             $stmt->execute([
                 $productId,
-                $businessId
+                $businessId,
+                $userId
             ]);
 
             $product = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -110,12 +112,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'stock
                     updated_at = NOW()
                 WHERE id = ?
                 AND business_id = ?
+                AND created_by = ?
             ");
 
             $stmt->execute([
                 $newStock,
                 $productId,
-                $businessId
+                $businessId,
+                $userId
             ]);
 
             /* =====================================================
@@ -214,11 +218,12 @@ $stmt = $pdo->prepare("
         AND u.business_id = p.business_id
 
     WHERE p.business_id = ?
+    AND p.created_by = ?
 
     ORDER BY p.name ASC
 ");
 
-$stmt->execute([$businessId]);
+$stmt->execute([$businessId, $userId]);
 
 $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -251,19 +256,21 @@ $stmt = $pdo->prepare("
     INNER JOIN inventory_products p
         ON p.id = m.product_id
         AND p.business_id = m.business_id
+        AND p.created_by = m.created_by
 
     LEFT JOIN inventory_units u
         ON u.id = p.unit_id
         AND u.business_id = p.business_id
 
     WHERE m.business_id = ?
+    AND m.created_by = ?
 
     ORDER BY m.id DESC
 
     LIMIT 200
 ");
 
-$stmt->execute([$businessId]);
+$stmt->execute([$businessId, $userId]);
 
 $movements = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
