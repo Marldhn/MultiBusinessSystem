@@ -17,21 +17,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_borrower'])) {
 
     $firstName = trim($_POST['first_name'] ?? '');
     $lastName = trim($_POST['last_name'] ?? '');
-    $contactNo = trim($_POST['contact_no'] ?? '');
+    $dateOfBirth = trim($_POST['date_of_birth'] ?? '');
+    $occupation = trim($_POST['occupation'] ?? '');
+    $contactNo = trim($_POST['phone'] ?? '');
     $address = trim($_POST['address'] ?? '');
 
     if ($firstName !== '' && $lastName !== '') {
 
         $stmt = $pdo->prepare("
-    INSERT INTO loan_borrowers
-    (business_id, created_by, first_name, last_name, phone, address)
-    VALUES (?, ?, ?, ?, ?, ?)
-");
+            INSERT INTO loan_borrowers
+            (
+                business_id,
+                created_by,
+                first_name,
+                last_name,
+                date_of_birth,
+                occupation,
+                phone,
+                address
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+
         $stmt->execute([
             $businessId,
             $userId,
             $firstName,
             $lastName,
+            $dateOfBirth !== '' ? $dateOfBirth : null,
+            $occupation !== '' ? $occupation : null,
             $contactNo,
             $address
         ]);
@@ -199,6 +213,12 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
             font-size: 0.76rem;
             color: var(--bs-secondary-color);
             line-height: 1.4;
+        }
+
+        .mobile-borrower-info {
+            font-size: 0.76rem;
+            color: var(--bs-secondary-color);
+            line-height: 1.5;
         }
 
         .mobile-borrower-footer {
@@ -390,6 +410,7 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         data-bs-dismiss="alert"
                         aria-label="Close"
                     ></button>
+
                 </div>
 
             <?php endif; ?>
@@ -409,6 +430,7 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         data-bs-dismiss="alert"
                         aria-label="Close"
                     ></button>
+
                 </div>
 
             <?php endif; ?>
@@ -461,6 +483,14 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 </th>
 
                                 <th class="py-3">
+                                    Date of Birth
+                                </th>
+
+                                <th class="py-3">
+                                    Occupation
+                                </th>
+
+                                <th class="py-3">
                                     Contact Number
                                 </th>
 
@@ -482,7 +512,7 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                             <tr>
 
-                                <td colspan="4">
+                                <td colspan="6">
 
                                     <div class="empty-state text-center text-muted">
 
@@ -559,11 +589,49 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                     <td>
 
-                                        <?php if (!empty($b['contact_no'])): ?>
+                                        <?php if (!empty($b['date_of_birth'])): ?>
+
+                                            <span class="text-body small">
+                                                <i class="bi bi-calendar3 me-1 text-muted"></i>
+                                                <?= htmlspecialchars($b['date_of_birth']) ?>
+                                            </span>
+
+                                        <?php else: ?>
+
+                                            <span class="text-muted small">
+                                                Not provided
+                                            </span>
+
+                                        <?php endif; ?>
+
+                                    </td>
+
+                                    <td>
+
+                                        <?php if (!empty($b['occupation'])): ?>
+
+                                            <span class="text-body small">
+                                                <i class="bi bi-briefcase me-1 text-muted"></i>
+                                                <?= htmlspecialchars($b['occupation']) ?>
+                                            </span>
+
+                                        <?php else: ?>
+
+                                            <span class="text-muted small">
+                                                Not provided
+                                            </span>
+
+                                        <?php endif; ?>
+
+                                    </td>
+
+                                    <td>
+
+                                        <?php if (!empty($b['phone'])): ?>
 
                                             <span class="text-body small">
                                                 <i class="bi bi-telephone me-1 text-muted"></i>
-                                                <?= htmlspecialchars($b['contact_no']) ?>
+                                                <?= htmlspecialchars($b['phone']) ?>
                                             </span>
 
                                         <?php else: ?>
@@ -663,7 +731,9 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                             $searchData = strtolower(
                                 $fullName . ' ' .
-                                ($b['contact_no'] ?? '') . ' ' .
+                                ($b['date_of_birth'] ?? '') . ' ' .
+                                ($b['occupation'] ?? '') . ' ' .
+                                ($b['phone'] ?? '') . ' ' .
                                 ($b['address'] ?? '')
                             );
 
@@ -688,15 +758,15 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                         <div class="mobile-borrower-contact">
 
-                                            <?php if (!empty($b['contact_no'])): ?>
+                                            <?php if (!empty($b['phone'])): ?>
 
                                                 <i class="bi bi-telephone me-1"></i>
-                                                <?= htmlspecialchars($b['contact_no']) ?>
+                                                <?= htmlspecialchars($b['phone']) ?>
 
                                             <?php else: ?>
 
                                                 <i class="bi bi-telephone-x me-1"></i>
-                                                No contact number
+                                                No phone number
 
                                             <?php endif; ?>
 
@@ -706,7 +776,37 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                 </div>
 
-                                <div class="mobile-borrower-address mt-3">
+                                <div class="mobile-borrower-info mt-3">
+
+                                    <div class="mb-1">
+
+                                        <i class="bi bi-calendar3 me-1"></i>
+
+                                        <strong>Date of Birth:</strong>
+
+                                        <?= !empty($b['date_of_birth'])
+                                            ? htmlspecialchars($b['date_of_birth'])
+                                            : 'Not provided'
+                                        ?>
+
+                                    </div>
+
+                                    <div class="mb-1">
+
+                                        <i class="bi bi-briefcase me-1"></i>
+
+                                        <strong>Occupation:</strong>
+
+                                        <?= !empty($b['occupation'])
+                                            ? htmlspecialchars($b['occupation'])
+                                            : 'Not provided'
+                                        ?>
+
+                                    </div>
+
+                                </div>
+
+                                <div class="mobile-borrower-address mt-2">
 
                                     <i class="bi bi-geo-alt me-1"></i>
 
@@ -753,7 +853,8 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     </div>
 
                     <div class="small">
-                        Try searching using a different name, contact number, or address.
+                        Try searching using a different name, date of birth,
+                        occupation, contact number, or address.
                     </div>
 
                 </div>
@@ -847,15 +948,50 @@ $borrowers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                     </div>
 
+                    <div class="row">
+
+                        <div class="col-md-6 mb-3">
+
+                            <label class="form-label fw-semibold small">
+                                Date of Birth
+                            </label>
+
+                            <input
+                                type="date"
+                                name="date_of_birth"
+                                class="form-control shadow-none"
+                                autocomplete="bday"
+                            >
+
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+
+                            <label class="form-label fw-semibold small">
+                                Occupation
+                            </label>
+
+                            <input
+                                type="text"
+                                name="occupation"
+                                class="form-control shadow-none"
+                                autocomplete="organization-title"
+                                placeholder="e.g. Teacher"
+                            >
+
+                        </div>
+
+                    </div>
+
                     <div class="mb-3">
 
                         <label class="form-label fw-semibold small">
-                            Contact Number
+                            Phone Number
                         </label>
 
                         <input
                             type="tel"
-                            name="contact_no"
+                            name="phone"
                             class="form-control shadow-none"
                             autocomplete="tel"
                             placeholder="e.g. 09123456789"

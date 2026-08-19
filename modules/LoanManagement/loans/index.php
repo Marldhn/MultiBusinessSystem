@@ -607,6 +607,9 @@ if($_SERVER['REQUEST_METHOD']==='POST'&&isset($_POST['issue_loan'])){
             'Please fill in all required fields correctly.';
 
     }else{
+        
+
+    
 
         /* CALCULATE DUE DATE */
 
@@ -1528,28 +1531,26 @@ $borrowers=
     );
 
 /* ============================================================
-   FUNDING ACCOUNTS
+   FUNDING ACCOUNTS DROPDOWN (STRICT USER & BUSINESS ISOLATION)
    ============================================================ */
 
-$accountsStmt=$pdo->prepare("
+$accountsStmt = $pdo->prepare("
     SELECT
         id,
         account_name,
         balance
     FROM loan_accounts
-    WHERE business_id=?
+    WHERE business_id = ?
+    AND created_by = ?
     ORDER BY account_name ASC
 ");
 
 $accountsStmt->execute([
-    $businessId
+    $businessId,
+    $userId
 ]);
 
-$accounts=
-    $accountsStmt->fetchAll(
-        PDO::FETCH_ASSOC
-    );
-
+$accounts = $accountsStmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>

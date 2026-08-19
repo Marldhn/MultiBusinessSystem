@@ -64,21 +64,20 @@ switch ($page) {
 
         break;
 
+// =====================================================
+// SETTINGS
+// =====================================================
 
-    // =====================================================
-    // SETTINGS
-    // =====================================================
+case 'settings':
 
-    case 'settings':
+    if (!isset($_SESSION['user_id'])) {
+        header('Location: index.php?page=login');
+        exit;
+    }
 
-        if (!isset($_SESSION['user_id'])) {
-            header('Location: index.php?page=login');
-            exit;
-        }
+    require_once __DIR__ . '/../modules/LoanManagement/settings.php';
 
-        require_once __DIR__ . '/../resources/settings.php';
-
-        break;
+    break;
 
 
     // =====================================================
