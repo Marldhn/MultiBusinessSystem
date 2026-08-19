@@ -2,8 +2,8 @@
 -- version 5.2.1
 -- https://www.phpmyadmin.net/
 --
--- Host: 127.0.0.1:3306
--- Generation Time: Aug 19, 2026 at 11:31 AM
+-- Host: 127.0.0.1
+-- Generation Time: Aug 19, 2026 at 02:24 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -57,6 +57,7 @@ CREATE TABLE `business_users` (
   `id` int(11) NOT NULL,
   `business_id` int(11) NOT NULL,
   `user_id` int(11) NOT NULL,
+  `created_by` int(11) DEFAULT NULL,
   `role` enum('owner','admin','staff') NOT NULL DEFAULT 'staff',
   `status` enum('active','inactive') NOT NULL DEFAULT 'active',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
@@ -66,14 +67,14 @@ CREATE TABLE `business_users` (
 -- Dumping data for table `business_users`
 --
 
-INSERT INTO `business_users` (`id`, `business_id`, `user_id`, `role`, `status`, `created_at`) VALUES
-(1, 1, 2, 'owner', 'active', '2026-08-14 23:48:15'),
-(2, 1, 3, 'admin', 'active', '2026-08-15 01:02:36'),
-(3, 1, 4, 'admin', 'active', '2026-08-15 01:04:14'),
-(4, 1, 5, 'admin', 'active', '2026-08-16 21:17:06'),
-(6, 2, 4, 'admin', 'active', '2026-08-17 10:27:46'),
-(7, 3, 4, 'admin', 'active', '2026-08-17 10:27:46'),
-(8, 2, 5, 'admin', 'active', '2026-08-17 14:53:17');
+INSERT INTO `business_users` (`id`, `business_id`, `user_id`, `created_by`, `role`, `status`, `created_at`) VALUES
+(1, 1, 2, NULL, 'owner', 'active', '2026-08-14 23:48:15'),
+(2, 1, 3, NULL, 'admin', 'active', '2026-08-15 01:02:36'),
+(3, 1, 4, NULL, 'admin', 'active', '2026-08-15 01:04:14'),
+(4, 1, 5, NULL, 'admin', 'active', '2026-08-16 21:17:06'),
+(6, 2, 4, NULL, 'admin', 'active', '2026-08-17 10:27:46'),
+(7, 3, 4, NULL, 'admin', 'active', '2026-08-17 10:27:46'),
+(8, 2, 5, NULL, 'admin', 'active', '2026-08-17 14:53:17');
 
 -- --------------------------------------------------------
 
@@ -359,7 +360,7 @@ INSERT INTO `loans` (`id`, `business_id`, `created_by`, `account_id`, `reference
 (11, 1, 3, 7, NULL, 3, 3000.00, 15.00, 3450.00, '2026-08-15', '2026-08-30', 15, 'days', 'lump_sum', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 3450.00, 'active', '2026-08-18 23:39:42', NULL),
 (12, 1, 3, 7, NULL, 4, 10000.00, 0.00, 10000.00, '2026-08-15', '2026-10-15', 2, 'months', 'lump_sum', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 10000.00, 'active', '2026-08-18 23:41:27', NULL),
 (13, 1, 3, 7, NULL, 6, 13036.00, 0.00, 13036.00, '2026-08-19', '2859-11-19', 9999, 'months', 'lump_sum', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 13036.00, 'active', '2026-08-18 23:42:00', NULL),
-(14, 1, 3, 7, NULL, 7, 5100.00, 15.00, 5865.00, '2026-08-15', '2026-08-30', 15, 'days', 'lump_sum', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 5865.00, 'active', '2026-08-18 23:44:13', NULL),
+(14, 1, 3, 7, '642333', 7, 5100.00, 15.00, 5865.00, '2026-08-15', '2026-08-30', 15, 'days', 'lump_sum', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 5865.00, 'active', '2026-08-18 23:44:13', '2026-08-19 10:49:48'),
 (15, 1, 3, 7, NULL, 8, 50000.00, 15.00, 57500.00, '2026-08-15', '2026-08-30', 15, 'days', 'lump_sum', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 57500.00, 'active', '2026-08-18 23:59:43', '2026-08-18 23:59:54'),
 (16, 1, 3, 7, NULL, 9, 10000.00, 12.00, 11200.00, '2026-08-15', '2026-08-30', 15, 'days', 'lump_sum', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 10000.00, 'active', '2026-08-19 00:01:09', '2026-08-19 00:01:41'),
 (17, 1, 3, 7, NULL, 9, 500.00, 12.00, 560.00, '2026-08-15', '2026-08-30', 15, 'days', 'lump_sum', 0, 'fixed', 0.00, 'one_time', 0, 'monthly', NULL, 560.00, 'active', '2026-08-19 00:01:34', NULL),
@@ -550,10 +551,15 @@ CREATE TABLE `loan_guarantors` (
   `business_id` int(11) NOT NULL,
   `loan_id` int(11) NOT NULL,
   `name` varchar(150) NOT NULL,
+  `date_of_birth` date DEFAULT NULL,
+  `occupation` varchar(150) DEFAULT NULL,
   `phone` varchar(50) DEFAULT NULL,
   `email` varchar(150) DEFAULT NULL,
   `address` text DEFAULT NULL,
   `relationship` varchar(100) DEFAULT NULL,
+  `id_type` varchar(100) DEFAULT NULL,
+  `id_number` varchar(100) DEFAULT NULL,
+  `notes` text DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -660,11 +666,11 @@ INSERT INTO `loan_schedules` (`id`, `business_id`, `loan_id`, `installment_numbe
 (35, 1, 11, 0, '2026-08-30', 3450.00, 0.00, 0.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-18 23:39:42', NULL),
 (36, 1, 12, 0, '2026-10-15', 10000.00, 0.00, 0.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-18 23:41:27', NULL),
 (37, 1, 13, 0, '2859-11-19', 13036.00, 0.00, 0.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-18 23:42:00', NULL),
-(38, 1, 14, 0, '2026-08-30', 5865.00, 0.00, 0.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-18 23:44:13', NULL),
 (40, 1, 15, 1, '2026-08-30', 57500.00, 0.00, 57500.00, NULL, 0.00, 57500.00, 'unpaid', '2026-08-18 23:59:54', '2026-08-18 23:59:54'),
 (43, 1, 17, 0, '2026-08-30', 560.00, 0.00, 0.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-19 00:01:34', NULL),
 (44, 1, 16, 1, '2026-08-30', 11200.00, 0.00, 11200.00, NULL, 0.00, 11200.00, 'unpaid', '2026-08-19 00:01:41', '2026-08-19 00:01:41'),
-(45, 1, 18, 0, '2859-11-19', 6247.00, 0.00, 0.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-19 00:04:12', NULL);
+(45, 1, 18, 0, '2859-11-19', 6247.00, 0.00, 0.00, NULL, 0.00, 0.00, 'unpaid', '2026-08-19 00:04:12', NULL),
+(46, 1, 14, 1, '2026-08-30', 5865.00, 0.00, 5865.00, NULL, 0.00, 5865.00, 'unpaid', '2026-08-19 10:49:48', '2026-08-19 10:49:48');
 
 -- --------------------------------------------------------
 
@@ -1454,7 +1460,7 @@ ALTER TABLE `loan_penalties`
 -- AUTO_INCREMENT for table `loan_schedules`
 --
 ALTER TABLE `loan_schedules`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=46;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=47;
 
 --
 -- AUTO_INCREMENT for table `loan_settings`

@@ -1,4 +1,5 @@
 <?php
+
 $pdo = Database::getConnection();
 
 $businessId = $_SESSION['business_id'] ?? null;
@@ -12,233 +13,14 @@ if (!$businessId || !$userId) {
 $businessId = (int)$businessId;
 $userId = (int)$userId;
 
-$upcomingDays = isset($_GET['upcoming_days']) ? (int)$_GET['upcoming_days'] : 15;
-
-if (!in_array($upcomingDays, [15, 30], true)) {
-    $upcomingDays = 15;
-}
-
 $businessName = $_SESSION['business_name'] ?? 'Business';
-
-/*
-|--------------------------------------------------------------------------
-| ACTIVE LOANS
-|--------------------------------------------------------------------------
-*/
-
-$activeLoansStmt = $pdo->prepare("
-    SELECT
-        COUNT(*) AS total_active,
-        COALESCE(SUM(total_payable), 0) AS total_amount
-    FROM loans
-    WHERE business_id = ?
-    AND created_by = ?
-    AND status = 'active'
-");
-
-$activeLoansStmt->execute([
-    $businessId,
-    $userId
-]);
-
-$activeLoansData = $activeLoansStmt->fetch(PDO::FETCH_ASSOC) ?: [
-    'total_active' => 0,
-    'total_amount' => 0
-];
-
-/*
-|--------------------------------------------------------------------------
-| BORROWERS
-|--------------------------------------------------------------------------
-*/
-
-$borrowersStmt = $pdo->prepare("
-    SELECT COUNT(*) AS total_borrowers
-    FROM loan_borrowers
-    WHERE business_id = ?
-    AND created_by = ?
-");
-
-$borrowersStmt->execute([
-    $businessId,
-    $userId
-]);
-
-$borrowersData = $borrowersStmt->fetch(PDO::FETCH_ASSOC) ?: [
-    'total_borrowers' => 0
-];
-
-/*
-|--------------------------------------------------------------------------
-| ACCOUNTS / AVAILABLE FUNDS
-|--------------------------------------------------------------------------
-*/
-
-$accountsStmt = $pdo->prepare("
-    SELECT COALESCE(SUM(balance), 0) AS total_funds
-    FROM loan_accounts
-    WHERE business_id = ?
-    AND created_by = ?
-");
-
-$accountsStmt->execute([
-    $businessId,
-    $userId
-]);
-
-$accountsData = $accountsStmt->fetch(PDO::FETCH_ASSOC) ?: [
-    'total_funds' => 0
-];
-
-/*
-|--------------------------------------------------------------------------
-| RECENT ACCOUNT TRANSACTIONS
-|--------------------------------------------------------------------------
-*/
-
-$txStmt = $pdo->prepare("
-    SELECT t.*
-    FROM loan_account_transactions t
-    INNER JOIN loan_accounts a
-        ON a.id = t.account_id
-        AND a.business_id = t.business_id
-        AND a.created_by = ?
-    WHERE t.business_id = ?
-    AND t.created_by = ?
-    ORDER BY t.created_at DESC
-    LIMIT 5
-");
-
-$txStmt->execute([
-    $userId,
-    $businessId,
-    $userId
-]);
-
-$recentTransactions = $txStmt->fetchAll(PDO::FETCH_ASSOC);
-
-/*
-|--------------------------------------------------------------------------
-| UPCOMING PAYMENTS
-|--------------------------------------------------------------------------
-*/
-
-$upcomingPaymentsStmt = $pdo->prepare("
-    SELECT
-        s.id AS schedule_id,
-        s.loan_id,
-        s.due_date,
-        s.amount_due,
-        s.status AS schedule_status,
-        l.reference_number,
-        l.status AS loan_status,
-        CONCAT(b.first_name, ' ', b.last_name) AS borrower_name
-    FROM loan_schedules s
-    INNER JOIN loans l
-        ON s.loan_id = l.id
-        AND l.business_id = s.business_id
-        AND l.created_by = ?
-    INNER JOIN loan_borrowers b
-        ON l.borrower_id = b.id
-        AND b.business_id = l.business_id
-        AND b.created_by = ?
-    WHERE l.business_id = ?
-    AND l.created_by = ?
-    AND l.status = 'active'
-    AND s.status IN ('unpaid', 'partially_paid')
-    AND s.due_date >= CURDATE()
-    AND s.due_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)
-    ORDER BY s.due_date ASC
-    LIMIT 20
-");
-
-$upcomingPaymentsStmt->execute([
-    $userId,
-    $userId,
-    $businessId,
-    $userId,
-    $upcomingDays
-]);
-
-$upcomingPayments = $upcomingPaymentsStmt->fetchAll(PDO::FETCH_ASSOC);
-
-/*
-|--------------------------------------------------------------------------
-| OVERDUE PAYMENTS
-|--------------------------------------------------------------------------
-*/
-
-$overduePaymentsStmt = $pdo->prepare("
-    SELECT
-        s.id AS schedule_id,
-        s.loan_id,
-        s.due_date,
-        s.amount_due,
-        s.status AS schedule_status,
-        l.reference_number,
-        l.status AS loan_status,
-        CONCAT(b.first_name, ' ', b.last_name) AS borrower_name
-    FROM loan_schedules s
-    INNER JOIN loans l
-        ON s.loan_id = l.id
-        AND l.business_id = s.business_id
-        AND l.created_by = ?
-    INNER JOIN loan_borrowers b
-        ON l.borrower_id = b.id
-        AND b.business_id = l.business_id
-        AND b.created_by = ?
-    WHERE l.business_id = ?
-    AND l.created_by = ?
-    AND l.status IN ('active', 'overdue')
-    AND s.status IN ('unpaid', 'partially_paid', 'overdue')
-    AND s.due_date < CURDATE()
-    ORDER BY s.due_date ASC
-    LIMIT 20
-");
-
-$overduePaymentsStmt->execute([
-    $userId,
-    $userId,
-    $businessId,
-    $userId
-]);
-
-$overduePayments = $overduePaymentsStmt->fetchAll(PDO::FETCH_ASSOC);
-
-/*
-|--------------------------------------------------------------------------
-| TOTALS
-|--------------------------------------------------------------------------
-*/
-
-$upcomingTotal = array_sum(
-    array_map(
-        'floatval',
-        array_column($upcomingPayments, 'amount_due')
-    )
-);
-
-$overdueTotal = array_sum(
-    array_map(
-        'floatval',
-        array_column($overduePayments, 'amount_due')
-    )
-);
-
-$activeLoanCount = (int)($activeLoansData['total_active'] ?? 0);
-$activeLoanAmount = (float)($activeLoansData['total_amount'] ?? 0);
-$totalBorrowers = (int)($borrowersData['total_borrowers'] ?? 0);
-$totalFunds = (float)($accountsData['total_funds'] ?? 0);
-
-$upcomingCount = count($upcomingPayments);
-$overdueCount = count($overduePayments);
 
 $activePage = 'dashboard';
 $pageTitle = 'Dashboard - Loan Management';
 
 /*
 |--------------------------------------------------------------------------
-| HELPER
+| HELPERS
 |--------------------------------------------------------------------------
 */
 
@@ -252,45 +34,467 @@ function money($value): string
     return '₱' . number_format((float)$value, 2);
 }
 
-function paymentStatusClass(int $daysRemaining): string
-{
-    if ($daysRemaining === 0) {
-        return 'warning';
-    }
+/*
+|--------------------------------------------------------------------------
+| DASHBOARD SUMMARY
+|--------------------------------------------------------------------------
+*/
 
-    if ($daysRemaining <= 3) {
-        return 'warning';
-    }
+/*
+|--------------------------------------------------------------------------
+| 1. TOTAL ACTIVE LOANS
+|--------------------------------------------------------------------------
+*/
 
-    return 'primary';
+$stmt = $pdo->prepare("
+    SELECT COUNT(*) AS total
+    FROM loans
+    WHERE business_id = ?
+      AND created_by = ?
+      AND status = 'active'
+");
+
+$stmt->execute([
+    $businessId,
+    $userId
+]);
+
+$totalActiveLoans = (int)($stmt->fetchColumn() ?: 0);
+
+
+/*
+|--------------------------------------------------------------------------
+| 2. TOTAL PRINCIPAL RELEASED
+|--------------------------------------------------------------------------
+|
+| Principal released = principal_amount of active loans.
+|
+*/
+
+$stmt = $pdo->prepare("
+    SELECT COALESCE(SUM(principal_amount), 0)
+    FROM loans
+    WHERE business_id = ?
+      AND created_by = ?
+      AND status IN ('active', 'overdue', 'completed')
+");
+
+$stmt->execute([
+    $businessId,
+    $userId
+]);
+
+$totalPrincipalReleased = (float)$stmt->fetchColumn();
+
+
+/*
+|--------------------------------------------------------------------------
+| 3. TOTAL OUTSTANDING BALANCE
+|--------------------------------------------------------------------------
+|
+| We use loan_schedules.balance_due.
+|
+*/
+
+$stmt = $pdo->prepare("
+    SELECT COALESCE(SUM(s.balance_due), 0)
+    FROM loan_schedules s
+    INNER JOIN loans l
+        ON l.id = s.loan_id
+       AND l.business_id = s.business_id
+    WHERE s.business_id = ?
+      AND l.created_by = ?
+      AND l.status IN ('active', 'overdue')
+      AND s.status IN ('unpaid', 'partially_paid', 'overdue')
+");
+
+$stmt->execute([
+    $businessId,
+    $userId
+]);
+
+$totalOutstanding = (float)$stmt->fetchColumn();
+
+
+/*
+|--------------------------------------------------------------------------
+| 4. TOTAL COLLECTED
+|--------------------------------------------------------------------------
+|
+| Payments are taken directly from loan_payments.
+|
+*/
+
+$stmt = $pdo->prepare("
+    SELECT COALESCE(SUM(payment_amount), 0)
+    FROM loan_payments
+    WHERE business_id = ?
+      AND created_by = ?
+");
+
+$stmt->execute([
+    $businessId,
+    $userId
+]);
+
+$totalCollected = (float)$stmt->fetchColumn();
+
+
+/*
+|--------------------------------------------------------------------------
+| 5. OVERDUE AMOUNT
+|--------------------------------------------------------------------------
+|
+| balance_due is used instead of amount_due so partially-paid
+| schedules only count their remaining balance.
+|
+*/
+
+$stmt = $pdo->prepare("
+    SELECT COALESCE(SUM(s.balance_due), 0)
+    FROM loan_schedules s
+    INNER JOIN loans l
+        ON l.id = s.loan_id
+       AND l.business_id = s.business_id
+    WHERE s.business_id = ?
+      AND l.created_by = ?
+      AND l.status IN ('active', 'overdue')
+      AND s.status IN ('unpaid', 'partially_paid', 'overdue')
+      AND s.due_date < CURDATE()
+");
+
+$stmt->execute([
+    $businessId,
+    $userId
+]);
+
+$overdueAmount = (float)$stmt->fetchColumn();
+
+
+/*
+|--------------------------------------------------------------------------
+| 6. ACTIVE BORROWERS
+|--------------------------------------------------------------------------
+|
+| Borrowers with at least one active/overdue loan.
+|
+*/
+
+$stmt = $pdo->prepare("
+    SELECT COUNT(DISTINCT l.borrower_id)
+    FROM loans l
+    WHERE l.business_id = ?
+      AND l.created_by = ?
+      AND l.status IN ('active', 'overdue')
+");
+
+$stmt->execute([
+    $businessId,
+    $userId
+]);
+
+$activeBorrowers = (int)$stmt->fetchColumn();
+
+
+/*
+|--------------------------------------------------------------------------
+| 7. LOANS DUE TODAY
+|--------------------------------------------------------------------------
+|
+| Counts schedules due today that are still unpaid/partially paid.
+|
+*/
+
+$stmt = $pdo->prepare("
+    SELECT COUNT(*)
+    FROM loan_schedules s
+    INNER JOIN loans l
+        ON l.id = s.loan_id
+       AND l.business_id = s.business_id
+    WHERE s.business_id = ?
+      AND l.created_by = ?
+      AND l.status IN ('active', 'overdue')
+      AND s.due_date = CURDATE()
+      AND s.status IN ('unpaid', 'partially_paid', 'overdue')
+");
+
+$stmt->execute([
+    $businessId,
+    $userId
+]);
+
+$loansDueToday = (int)$stmt->fetchColumn();
+
+
+/*
+|--------------------------------------------------------------------------
+| 8. TODAY'S COLLECTION
+|--------------------------------------------------------------------------
+*/
+
+$stmt = $pdo->prepare("
+    SELECT COALESCE(SUM(payment_amount), 0)
+    FROM loan_payments
+    WHERE business_id = ?
+      AND created_by = ?
+      AND payment_date = CURDATE()
+");
+
+$stmt->execute([
+    $businessId,
+    $userId
+]);
+
+$todayCollected = (float)$stmt->fetchColumn();
+
+
+/*
+|--------------------------------------------------------------------------
+| COLLECTION PERFORMANCE
+|--------------------------------------------------------------------------
+|
+| Last 7 days.
+|
+*/
+
+$stmt = $pdo->prepare("
+    SELECT
+        payment_date,
+        COALESCE(SUM(payment_amount), 0) AS total
+    FROM loan_payments
+    WHERE business_id = ?
+      AND created_by = ?
+      AND payment_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+      AND payment_date <= CURDATE()
+    GROUP BY payment_date
+    ORDER BY payment_date ASC
+");
+
+$stmt->execute([
+    $businessId,
+    $userId
+]);
+
+$collectionRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+
+/*
+|--------------------------------------------------------------------------
+| BUILD LAST 7 DAYS
+|--------------------------------------------------------------------------
+*/
+
+$collectionLabels = [];
+$collectionValues = [];
+
+$collectionMap = [];
+
+foreach ($collectionRows as $row) {
+    $collectionMap[$row['payment_date']] = (float)$row['total'];
 }
 
-function paymentStatusLabel(int $daysRemaining): string
-{
-    if ($daysRemaining === 0) {
-        return 'Due Today';
-    }
+for ($i = 6; $i >= 0; $i--) {
 
-    if ($daysRemaining <= 3) {
-        return 'Due Soon';
-    }
+    $date = date(
+        'Y-m-d',
+        strtotime("-{$i} days")
+    );
 
-    return 'Upcoming';
+    $collectionLabels[] = date(
+        'M d',
+        strtotime($date)
+    );
+
+    $collectionValues[] = $collectionMap[$date] ?? 0;
 }
 
-function loanReference(array $payment): string
-{
-    return !empty($payment['reference_number'])
-        ? $payment['reference_number']
-        : '#' . ($payment['loan_id'] ?? '');
-}
+
+/*
+|--------------------------------------------------------------------------
+| 9. RECENT PAYMENTS
+|--------------------------------------------------------------------------
+*/
+
+$stmt = $pdo->prepare("
+    SELECT
+        p.id,
+        p.payment_amount,
+        p.payment_date,
+        p.created_at,
+        p.notes,
+        l.id AS loan_id,
+        l.reference_number,
+        CONCAT(
+            b.first_name,
+            ' ',
+            b.last_name
+        ) AS borrower_name
+    FROM loan_payments p
+
+    INNER JOIN loans l
+        ON l.id = p.loan_id
+       AND l.business_id = p.business_id
+       AND l.created_by = ?
+
+    INNER JOIN loan_borrowers b
+        ON b.id = l.borrower_id
+       AND b.business_id = l.business_id
+       AND b.created_by = ?
+
+    WHERE p.business_id = ?
+      AND p.created_by = ?
+
+    ORDER BY p.payment_date DESC, p.created_at DESC
+
+    LIMIT 8
+");
+
+$stmt->execute([
+    $userId,
+    $userId,
+    $businessId,
+    $userId
+]);
+
+$recentPayments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+
+/*
+|--------------------------------------------------------------------------
+| 10. LOANS DUE TODAY LIST
+|--------------------------------------------------------------------------
+*/
+
+$stmt = $pdo->prepare("
+    SELECT
+        s.id AS schedule_id,
+        s.loan_id,
+        s.installment_number,
+        s.amount_due,
+        s.amount_paid,
+        s.balance_due,
+        s.status AS schedule_status,
+        l.reference_number,
+        CONCAT(
+            b.first_name,
+            ' ',
+            b.last_name
+        ) AS borrower_name
+    FROM loan_schedules s
+
+    INNER JOIN loans l
+        ON l.id = s.loan_id
+       AND l.business_id = s.business_id
+       AND l.created_by = ?
+
+    INNER JOIN loan_borrowers b
+        ON b.id = l.borrower_id
+       AND b.business_id = l.business_id
+       AND b.created_by = ?
+
+    WHERE s.business_id = ?
+      AND l.created_by = ?
+      AND l.status IN ('active', 'overdue')
+      AND s.due_date = CURDATE()
+      AND s.status IN ('unpaid', 'partially_paid', 'overdue')
+
+    ORDER BY s.balance_due DESC
+    LIMIT 10
+");
+
+$stmt->execute([
+    $userId,
+    $userId,
+    $businessId,
+    $userId
+]);
+
+$todayDuePayments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+
+/*
+|--------------------------------------------------------------------------
+| 11. RECENT OVERDUE PAYMENTS
+|--------------------------------------------------------------------------
+*/
+
+$stmt = $pdo->prepare("
+    SELECT
+        s.id AS schedule_id,
+        s.loan_id,
+        s.due_date,
+        s.balance_due,
+        s.status AS schedule_status,
+        l.reference_number,
+        CONCAT(
+            b.first_name,
+            ' ',
+            b.last_name
+        ) AS borrower_name
+
+    FROM loan_schedules s
+
+    INNER JOIN loans l
+        ON l.id = s.loan_id
+       AND l.business_id = s.business_id
+       AND l.created_by = ?
+
+    INNER JOIN loan_borrowers b
+        ON b.id = l.borrower_id
+       AND b.business_id = l.business_id
+       AND b.created_by = ?
+
+    WHERE s.business_id = ?
+      AND l.created_by = ?
+      AND l.status IN ('active', 'overdue')
+      AND s.status IN ('unpaid', 'partially_paid', 'overdue')
+      AND s.due_date < CURDATE()
+
+    ORDER BY s.due_date ASC
+
+    LIMIT 8
+");
+
+$stmt->execute([
+    $userId,
+    $userId,
+    $businessId,
+    $userId
+]);
+
+$recentOverdue = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+
+/*
+|--------------------------------------------------------------------------
+| COLLECTION RATE
+|--------------------------------------------------------------------------
+|
+| Collected / (Collected + Outstanding)
+|
+*/
+
+$collectionDenominator =
+    $totalCollected + $totalOutstanding;
+
+$collectionRate = $collectionDenominator > 0
+    ? ($totalCollected / $collectionDenominator) * 100
+    : 0;
+
+$collectionRate = min(100, max(0, $collectionRate));
+
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
 
 <title><?= e($pageTitle) ?></title>
 
@@ -304,25 +508,73 @@ function loanReference(array $payment): string
     rel="stylesheet"
 >
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <script>
 (function () {
-    const theme = localStorage.getItem('bs-theme') || 'light';
-    document.documentElement.setAttribute('data-bs-theme', theme);
+
+    const theme =
+        localStorage.getItem('bs-theme') || 'light';
+
+    document.documentElement.setAttribute(
+        'data-bs-theme',
+        theme
+    );
+
 })();
 </script>
 
 <style>
+
 body {
     min-height: 100vh;
     overflow-x: hidden;
 }
 
+.dashboard-link-card {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+}
+
+.dashboard-link-card .metric-card {
+    cursor: pointer;
+}
+
+.dashboard-link-card .metric-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.08) !important;
+}
+
+.dashboard-link-card .metric-card:active {
+    transform: translateY(-1px);
+}
+
+.dashboard-link-card .metric-card .click-indicator {
+    opacity: 0;
+    transition: opacity .2s ease;
+}
+
+.dashboard-link-card:hover .click-indicator {
+    opacity: 1;
+}
+
+@media (max-width: 575.98px) {
+    .dashboard-link-card .metric-card {
+        min-height: 130px;
+    }
+
+    .dashboard-link-card .metric-card .click-indicator {
+        opacity: 1;
+    }
+}
 .dashboard-main {
     min-width: 0;
     width: 100%;
 }
 
 .dashboard-container {
+    width: 100%;
     max-width: 1600px;
     margin: 0 auto;
 }
@@ -341,94 +593,68 @@ body {
     flex-shrink: 0;
 }
 
+
+/* =========================================================
+   METRIC CARDS
+========================================================= */
+
 .metric-card {
     border: 1px solid var(--bs-border-color);
     border-radius: 18px;
     overflow: hidden;
     transition:
         transform .2s ease,
-        box-shadow .2s ease,
-        border-color .2s ease;
+        box-shadow .2s ease;
 }
 
 .metric-card:hover {
     transform: translateY(-3px);
-    box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.08)!important;
+    box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.08) !important;
 }
 
 .metric-card .card-body {
-    padding: 22px;
+    padding: 21px;
 }
 
 .metric-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 14px;
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+    border-radius: 13px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.2rem;
-    flex-shrink: 0;
+    font-size: 1.15rem;
 }
 
 .metric-label {
-    font-size: .68rem;
+    font-size: .66rem;
     letter-spacing: .07em;
     text-transform: uppercase;
 }
 
 .metric-value {
-    font-size: 1.65rem;
-    line-height: 1.15;
+    font-size: 1.55rem;
+    line-height: 1.2;
 }
 
 .metric-description {
-    font-size: .75rem;
+    font-size: .72rem;
 }
 
-.quick-actions {
+
+/* =========================================================
+   MAIN CARDS
+========================================================= */
+
+.dashboard-card {
     border: 1px solid var(--bs-border-color);
     border-radius: 18px;
     overflow: hidden;
 }
 
-.quick-action {
-    min-height: 92px;
-    border: 0;
-    border-radius: 13px;
-    transition: all .2s ease;
-}
-
-.quick-action:hover {
-    transform: translateY(-2px);
-    background: var(--bs-tertiary-bg);
-}
-
-.quick-action-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 11px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.payment-card {
-    border: 1px solid var(--bs-border-color);
-    border-radius: 18px;
-    overflow: hidden;
-}
-
-.payment-card.upcoming-card {
-    border-left: 4px solid var(--bs-primary);
-}
-
-.payment-card.overdue-card {
-    border-left: 4px solid var(--bs-danger);
-}
-
-.payment-card-header {
-    padding: 21px 24px;
+.dashboard-card-header {
+    padding: 20px 22px;
 }
 
 .section-icon {
@@ -441,58 +667,78 @@ body {
     flex-shrink: 0;
 }
 
-.payment-table th,
-.transaction-table th {
-    font-size: .68rem;
+
+/* =========================================================
+   CHART
+========================================================= */
+
+.chart-wrapper {
+    position: relative;
+    width: 100%;
+    height: 300px;
+}
+
+.chart-summary {
+    border: 1px solid var(--bs-border-color);
+    border-radius: 13px;
+    background: var(--bs-tertiary-bg);
+}
+
+.chart-summary-item {
+    padding: 12px 15px;
+}
+
+.chart-summary-label {
+    display: block;
+    font-size: .62rem;
+    color: var(--bs-secondary-color);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+}
+
+.chart-summary-value {
+    display: block;
+    font-size: .9rem;
+    font-weight: 700;
+    margin-top: 2px;
+}
+
+
+/* =========================================================
+   TABLES
+========================================================= */
+
+.dashboard-table th {
+    font-size: .65rem;
+    text-transform: uppercase;
     letter-spacing: .06em;
+    color: var(--bs-secondary-color);
     white-space: nowrap;
 }
 
-.payment-table td,
-.transaction-table td {
+.dashboard-table td {
     padding-top: 14px;
     padding-bottom: 14px;
 }
 
-.payment-table tbody tr,
-.transaction-table tbody tr {
+.dashboard-table tbody tr {
     transition: background .15s ease;
 }
 
-.payment-table tbody tr:hover,
-.transaction-table tbody tr:hover {
+.dashboard-table tbody tr:hover {
     background: var(--bs-tertiary-bg);
 }
 
-.payment-date {
-    font-weight: 700;
-}
 
-.due-soon-badge {
-    font-size: .68rem;
-}
+/* =========================================================
+   MOBILE PAYMENT CARDS
+========================================================= */
 
-.empty-state {
-    padding: 48px 20px;
-}
-
-.empty-icon {
-    width: 58px;
-    height: 58px;
-    border-radius: 16px;
-    margin: 0 auto 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-}
-
-.payment-mobile,
-.transaction-mobile {
+.mobile-list {
     display: none;
 }
 
-.mobile-payment {
+.mobile-item {
     border: 1px solid var(--bs-border-color);
     border-radius: 14px;
     padding: 14px;
@@ -500,184 +746,101 @@ body {
     background: var(--bs-body-bg);
 }
 
-.mobile-payment:last-child {
+.mobile-item:last-child {
     margin-bottom: 0;
 }
 
-.mobile-payment-top {
+.mobile-item-top {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
     gap: 12px;
-    margin-bottom: 12px;
 }
 
-.mobile-payment-borrower {
-    font-size: .88rem;
+.mobile-item-name {
+    font-size: .84rem;
     font-weight: 700;
     line-height: 1.35;
-    word-break: break-word;
 }
 
-.mobile-payment-reference {
-    font-size: .68rem;
+.mobile-item-reference {
     color: var(--bs-secondary-color);
+    font-size: .65rem;
     margin-top: 3px;
 }
 
-.mobile-payment-date {
-    font-size: .74rem;
-    font-weight: 600;
-    margin-top: 9px;
-}
-
-.mobile-payment-amount {
-    font-size: .95rem;
+.mobile-item-amount {
+    font-size: .9rem;
     font-weight: 700;
-    text-align: right;
     white-space: nowrap;
+    text-align: right;
 }
 
-.mobile-payment-info {
+.mobile-item-info {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: 10px;
+    margin-top: 12px;
     padding-top: 11px;
     border-top: 1px solid var(--bs-border-color);
 }
 
-.mobile-payment-label {
+.mobile-label {
     display: block;
-    font-size: .61rem;
+    font-size: .59rem;
     color: var(--bs-secondary-color);
     text-transform: uppercase;
     letter-spacing: .05em;
     margin-bottom: 3px;
 }
 
-.mobile-payment-value {
-    font-size: .78rem;
+.mobile-value {
+    font-size: .75rem;
     font-weight: 600;
 }
 
-.mobile-transaction {
-    border: 1px solid var(--bs-border-color);
-    border-radius: 13px;
-    padding: 13px;
-    margin-bottom: 10px;
-    background: var(--bs-body-bg);
+
+/* =========================================================
+   EMPTY STATE
+========================================================= */
+
+.empty-state {
+    padding: 42px 20px;
 }
 
-.mobile-transaction:last-child {
-    margin-bottom: 0;
-}
-
-.mobile-transaction-top {
+.empty-icon {
+    width: 55px;
+    height: 55px;
+    border-radius: 15px;
+    margin: 0 auto 13px;
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 10px;
-    margin-bottom: 9px;
-}
-
-.mobile-transaction-description {
-    font-size: .82rem;
-    font-weight: 600;
-    line-height: 1.35;
-    word-break: break-word;
-}
-
-.mobile-transaction-date {
-    font-size: .68rem;
-    color: var(--bs-secondary-color);
-}
-
-.mobile-transaction-bottom {
-    display: flex;
-    justify-content: space-between;
     align-items: center;
-    gap: 10px;
-    padding-top: 9px;
-    border-top: 1px solid var(--bs-border-color);
+    justify-content: center;
+    font-size: 1.35rem;
 }
 
-.mobile-transaction-amount {
-    font-size: .9rem;
+
+/* =========================================================
+   COLLECTION PROGRESS
+========================================================= */
+
+.collection-progress {
+    height: 8px;
+    border-radius: 20px;
+}
+
+.collection-rate {
+    font-size: 1.7rem;
     font-weight: 700;
-    white-space: nowrap;
 }
 
-.summary-strip {
-    border: 1px solid var(--bs-border-color);
-    border-radius: 14px;
-    background: var(--bs-tertiary-bg);
-}
 
-.summary-item {
-    padding: 12px 16px;
-}
-
-.summary-label {
-    display: block;
-    font-size: .64rem;
-    text-transform: uppercase;
-    letter-spacing: .05em;
-    color: var(--bs-secondary-color);
-}
-
-.summary-value {
-    display: block;
-    font-size: .9rem;
-    font-weight: 700;
-    margin-top: 2px;
-}
+/* =========================================================
+   MOBILE
+========================================================= */
 
 @media (max-width: 767.98px) {
-    .payment-table-wrapper {
-        display: none;
-    }
 
-    .payment-mobile {
-        display: block;
-        padding: 0 12px 12px;
-    }
-
-    .payment-card-header {
-        padding: 17px;
-    }
-
-    .payment-filter {
-        width: 100%;
-    }
-
-    .payment-filter .btn-group {
-        width: 100%;
-    }
-
-    .payment-filter .btn {
-        flex: 1;
-    }
-
-    .transaction-table {
-        display: none;
-    }
-
-    .transaction-mobile {
-        display: block;
-        padding: 0 12px 12px;
-    }
-
-    .transaction-header {
-        padding: 16px !important;
-    }
-}
-
-@media (max-width: 575.98px) {
-    .dashboard-main {
-        padding: 0 !important;
-    }
-
-    .dashboard-main > .dashboard-container {
+    .dashboard-container {
         padding: 14px !important;
     }
 
@@ -690,13 +853,8 @@ body {
     }
 
     .dashboard-header p {
-        font-size: .76rem;
+        font-size: .74rem;
         line-height: 1.4;
-    }
-
-    .issue-loan-btn {
-        width: 100%;
-        justify-content: center;
     }
 
     .metric-row {
@@ -709,123 +867,94 @@ body {
     }
 
     .metric-card .card-body {
-        padding: 16px;
+        padding: 15px;
     }
 
     .metric-icon {
-        width: 40px;
-        height: 40px;
-        border-radius: 11px;
-        font-size: 1rem;
+        width: 39px;
+        height: 39px;
+        min-width: 39px;
+        border-radius: 10px;
+        font-size: .95rem;
     }
 
     .metric-label {
-        font-size: .61rem;
-        margin-bottom: 4px !important;
-    }
-
-    .metric-value {
-        font-size: 1.2rem;
-    }
-
-    .metric-description {
-        font-size: .64rem;
-    }
-
-    .quick-actions {
-        border-radius: 14px;
-    }
-
-    .quick-action {
-        min-height: 78px;
-    }
-
-    .quick-action-icon {
-        width: 36px;
-        height: 36px;
-    }
-
-    .payment-card {
-        border-radius: 14px;
-    }
-
-    .payment-card-header {
-        padding: 15px !important;
-    }
-
-    .payment-card-header h5 {
-        font-size: .95rem !important;
-    }
-
-    .payment-card-header p {
-        font-size: .69rem;
-    }
-
-    .payment-card-header .btn-group {
-        width: 100%;
-    }
-
-    .payment-card-header .btn {
-        flex: 1;
-    }
-
-    .mobile-payment {
-        padding: 13px;
-    }
-
-    .mobile-payment-borrower {
-        font-size: .83rem;
-    }
-
-    .mobile-payment-reference {
-        font-size: .65rem;
-    }
-
-    .mobile-payment-date {
-        font-size: .7rem;
-    }
-
-    .mobile-payment-label {
-        font-size: .59rem;
-    }
-
-    .mobile-payment-value {
-        font-size: .74rem;
-    }
-
-    .mobile-payment-amount {
-        font-size: .87rem;
-    }
-
-    .transaction-card {
-        border-radius: 14px;
-    }
-
-    .transaction-header {
-        padding: 15px !important;
-    }
-
-    .transaction-header h5 {
-        font-size: .94rem !important;
-    }
-
-    .summary-item {
-        padding: 10px 12px;
-    }
-
-    .summary-label {
         font-size: .58rem;
     }
 
-    .summary-value {
-        font-size: .78rem;
+    .metric-value {
+        font-size: 1.12rem;
     }
 
-    .empty-state {
-        padding: 35px 15px;
+    .metric-description {
+        font-size: .61rem;
     }
+
+    .dashboard-card {
+        border-radius: 14px;
+    }
+
+    .dashboard-card-header {
+        padding: 16px;
+    }
+
+    .dashboard-card-header h5 {
+        font-size: .94rem;
+    }
+
+    .dashboard-card-header p {
+        font-size: .68rem;
+    }
+
+    .chart-wrapper {
+        height: 240px;
+    }
+
+    .dashboard-table-wrapper {
+        display: none;
+    }
+
+    .mobile-list {
+        display: block;
+        padding: 0 12px 12px;
+    }
+
+    .collection-rate {
+        font-size: 1.4rem;
+    }
+
 }
+
+
+/* =========================================================
+   VERY SMALL PHONES
+========================================================= */
+
+@media (max-width: 380px) {
+
+    .dashboard-container {
+        padding: 10px !important;
+    }
+
+    .metric-card .card-body {
+        padding: 12px;
+    }
+
+    .metric-value {
+        font-size: 1rem;
+    }
+
+    .metric-icon {
+        width: 34px;
+        height: 34px;
+        min-width: 34px;
+        font-size: .85rem;
+    }
+
+}
+
 </style>
+
 </head>
 
 <body class="bg-body-tertiary">
@@ -838,50 +967,51 @@ body {
 
 <div class="dashboard-container p-3 p-md-4">
 
+
 <!-- =========================================================
      HEADER
 ========================================================= -->
 
-<div class="dashboard-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+<div class="dashboard-header d-flex align-items-center gap-3 mb-4">
 
-    <div class="d-flex align-items-center gap-3">
+    <div class="welcome-icon bg-primary bg-opacity-10 text-primary d-lg-none">
+        <i class="bi bi-speedometer2"></i>
+    </div>
 
-        <div class="welcome-icon bg-primary bg-opacity-10 text-primary d-lg-none">
-            <i class="bi bi-speedometer2"></i>
-        </div>
+    <div>
 
-        <div>
-            <h2 class="fw-bold text-body mb-1">
-                Dashboard
-            </h2>
+        <h2 class="fw-bold text-body mb-1">
+            Dashboard
+        </h2>
 
-            <p class="text-muted small mb-0">
-                Welcome back. Managing
-                <span class="fw-semibold text-primary">
-                    <?= e($businessName) ?>
-                </span>
-            </p>
-        </div>
+        <p class="text-muted small mb-0">
+            Loan portfolio overview for
+            <span class="fw-semibold text-primary">
+                <?= e($businessName) ?>
+            </span>
+        </p>
 
     </div>
 
-
-
 </div>
 
+
 <!-- =========================================================
-     METRICS
+     TOP METRICS
 ========================================================= -->
 
-<div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 metric-row g-3 mb-4">
+<div class="row row-cols-2 row-cols-xl-4 metric-row g-3 mb-4">
+
 
     <!-- ACTIVE LOANS -->
+
     <div class="col">
+
         <div class="card metric-card shadow-sm bg-body h-100">
 
             <div class="card-body">
 
-                <div class="d-flex justify-content-between align-items-start gap-3">
+                <div class="d-flex justify-content-between gap-2">
 
                     <div class="min-width-0">
 
@@ -890,14 +1020,11 @@ body {
                         </div>
 
                         <div class="metric-value fw-bold text-primary">
-                            <?= number_format($activeLoanCount) ?>
+                            <?= number_format($totalActiveLoans) ?>
                         </div>
 
                         <div class="metric-description text-muted mt-2">
-                            Total value:
-                            <span class="fw-semibold text-body">
-                                <?= money($activeLoanAmount) ?>
-                            </span>
+                            Currently running
                         </div>
 
                     </div>
@@ -911,33 +1038,76 @@ body {
             </div>
 
         </div>
+
     </div>
 
-    <!-- AVAILABLE FUNDS -->
+
+    <!-- PRINCIPAL RELEASED -->
+
     <div class="col">
+
         <div class="card metric-card shadow-sm bg-body h-100">
 
             <div class="card-body">
 
-                <div class="d-flex justify-content-between align-items-start gap-3">
+                <div class="d-flex justify-content-between gap-2">
 
                     <div class="min-width-0">
 
                         <div class="metric-label text-muted fw-bold mb-2">
-                            Available Funds
+                            Principal Released
                         </div>
 
                         <div class="metric-value fw-bold text-success text-truncate">
-                            <?= money($totalFunds) ?>
+                            <?= money($totalPrincipalReleased) ?>
                         </div>
 
                         <div class="metric-description text-muted mt-2">
-                            Across your accounts
+                            Loan principal
                         </div>
 
                     </div>
 
                     <div class="metric-icon bg-success bg-opacity-10 text-success">
+                        <i class="bi bi-cash-stack"></i>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- OUTSTANDING -->
+
+    <div class="col">
+
+        <div class="card metric-card shadow-sm bg-body h-100">
+
+            <div class="card-body">
+
+                <div class="d-flex justify-content-between gap-2">
+
+                    <div class="min-width-0">
+
+                        <div class="metric-label text-muted fw-bold mb-2">
+                            Outstanding
+                        </div>
+
+                        <div class="metric-value fw-bold text-warning text-truncate">
+                            <?= money($totalOutstanding) ?>
+                        </div>
+
+                        <div class="metric-description text-muted mt-2">
+                            Remaining balance
+                        </div>
+
+                    </div>
+
+                    <div class="metric-icon bg-warning bg-opacity-10 text-warning">
                         <i class="bi bi-wallet2"></i>
                     </div>
 
@@ -946,34 +1116,38 @@ body {
             </div>
 
         </div>
+
     </div>
 
-    <!-- BORROWERS -->
+
+    <!-- COLLECTED -->
+
     <div class="col">
+
         <div class="card metric-card shadow-sm bg-body h-100">
 
             <div class="card-body">
 
-                <div class="d-flex justify-content-between align-items-start gap-3">
+                <div class="d-flex justify-content-between gap-2">
 
                     <div class="min-width-0">
 
                         <div class="metric-label text-muted fw-bold mb-2">
-                            Total Borrowers
+                            Total Collected
                         </div>
 
-                        <div class="metric-value fw-bold text-warning">
-                            <?= number_format($totalBorrowers) ?>
+                        <div class="metric-value fw-bold text-info text-truncate">
+                            <?= money($totalCollected) ?>
                         </div>
 
                         <div class="metric-description text-muted mt-2">
-                            Your registered clients
+                            All recorded payments
                         </div>
 
                     </div>
 
-                    <div class="metric-icon bg-warning bg-opacity-10 text-warning">
-                        <i class="bi bi-people"></i>
+                    <div class="metric-icon bg-info bg-opacity-10 text-info">
+                        <i class="bi bi-graph-up-arrow"></i>
                     </div>
 
                 </div>
@@ -981,15 +1155,28 @@ body {
             </div>
 
         </div>
+
     </div>
 
+</div>
+
+
+<!-- =========================================================
+     SECONDARY METRICS
+========================================================= -->
+
+<div class="row row-cols-2 row-cols-md-3 g-3 mb-4">
+
+
     <!-- OVERDUE -->
+
     <div class="col">
+
         <div class="card metric-card shadow-sm bg-body h-100">
 
             <div class="card-body">
 
-                <div class="d-flex justify-content-between align-items-start gap-3">
+                <div class="d-flex justify-content-between gap-2">
 
                     <div class="min-width-0">
 
@@ -998,24 +1185,11 @@ body {
                         </div>
 
                         <div class="metric-value fw-bold text-danger text-truncate">
-                            <?= money($overdueTotal) ?>
+                            <?= money($overdueAmount) ?>
                         </div>
 
                         <div class="metric-description text-muted mt-2">
-
-                            <?php if ($overdueCount > 0): ?>
-
-                                <span class="text-danger fw-semibold">
-                                    <?= $overdueCount ?>
-                                </span>
-                                overdue payment(s)
-
-                            <?php else: ?>
-
-                                All payments are up to date
-
-                            <?php endif; ?>
-
+                            Past due balance
                         </div>
 
                     </div>
@@ -1029,143 +1203,80 @@ body {
             </div>
 
         </div>
+
     </div>
 
-</div>
 
-<!-- =========================================================
-     QUICK ACTIONS
-========================================================= -->
+    <!-- ACTIVE BORROWERS -->
 
-<div class="card quick-actions shadow-sm bg-body mb-4">
+    <div class="col">
 
-    <div class="card-body p-3 p-md-4">
+        <div class="card metric-card shadow-sm bg-body h-100">
 
-        <div class="d-flex align-items-center justify-content-between mb-3">
+            <div class="card-body">
 
-            <div>
+                <div class="d-flex justify-content-between gap-2">
 
-                <h6 class="fw-bold mb-1">
-                    Quick Actions
-                </h6>
+                    <div class="min-width-0">
 
-                <p class="text-muted small mb-0">
-                    Frequently used loan management actions
-                </p>
+                        <div class="metric-label text-muted fw-bold mb-2">
+                            Active Borrowers
+                        </div>
+
+                        <div class="metric-value fw-bold text-primary">
+                            <?= number_format($activeBorrowers) ?>
+                        </div>
+
+                        <div class="metric-description text-muted mt-2">
+                            With active loans
+                        </div>
+
+                    </div>
+
+                    <div class="metric-icon bg-primary bg-opacity-10 text-primary">
+                        <i class="bi bi-people"></i>
+                    </div>
+
+                </div>
 
             </div>
-
-            <i class="bi bi-lightning-charge text-warning fs-5"></i>
 
         </div>
 
-        <div class="row g-2">
+    </div>
 
-            <div class="col-6 col-md-3">
 
-                <a
-                    href="index.php?page=loans"
-                    class="quick-action d-flex align-items-center gap-3 p-3 text-decoration-none text-body"
-                >
+    <!-- DUE TODAY -->
 
-                    <div class="quick-action-icon bg-primary bg-opacity-10 text-primary">
-                        <i class="bi bi-plus-lg"></i>
-                    </div>
+    <div class="col">
 
-                    <div class="min-width-0">
+        <div class="card metric-card shadow-sm bg-body h-100">
 
-                        <div class="fw-bold small">
-                            New Loan
-                        </div>
+            <div class="card-body">
 
-                        <div class="text-muted small d-none d-sm-block">
-                            Issue loan
-                        </div>
-
-                    </div>
-
-                </a>
-
-            </div>
-
-            <div class="col-6 col-md-3">
-
-                <a
-                    href="index.php?page=borrowers"
-                    class="quick-action d-flex align-items-center gap-3 p-3 text-decoration-none text-body"
-                >
-
-                    <div class="quick-action-icon bg-warning bg-opacity-10 text-warning">
-                        <i class="bi bi-person-plus"></i>
-                    </div>
+                <div class="d-flex justify-content-between gap-2">
 
                     <div class="min-width-0">
 
-                        <div class="fw-bold small">
-                            Borrowers
+                        <div class="metric-label text-muted fw-bold mb-2">
+                            Due Today
                         </div>
 
-                        <div class="text-muted small d-none d-sm-block">
-                            Manage clients
+                        <div class="metric-value fw-bold text-warning">
+                            <?= number_format($loansDueToday) ?>
                         </div>
 
-                    </div>
-
-                </a>
-
-            </div>
-
-            <div class="col-6 col-md-3">
-
-                <a
-                    href="index.php?page=loan_accounts"
-                    class="quick-action d-flex align-items-center gap-3 p-3 text-decoration-none text-body"
-                >
-
-                    <div class="quick-action-icon bg-success bg-opacity-10 text-success">
-                        <i class="bi bi-wallet2"></i>
-                    </div>
-
-                    <div class="min-width-0">
-
-                        <div class="fw-bold small">
-                            Accounts
-                        </div>
-
-                        <div class="text-muted small d-none d-sm-block">
-                            Manage funds
+                        <div class="metric-description text-muted mt-2">
+                            Payment schedules
                         </div>
 
                     </div>
 
-                </a>
-
-            </div>
-
-            <div class="col-6 col-md-3">
-
-                <a
-                    href="index.php?page=loans"
-                    class="quick-action d-flex align-items-center gap-3 p-3 text-decoration-none text-body"
-                >
-
-                    <div class="quick-action-icon bg-danger bg-opacity-10 text-danger">
-                        <i class="bi bi-search"></i>
+                    <div class="metric-icon bg-warning bg-opacity-10 text-warning">
+                        <i class="bi bi-calendar-event"></i>
                     </div>
 
-                    <div class="min-width-0">
-
-                        <div class="fw-bold small">
-                            View Loans
-                        </div>
-
-                        <div class="text-muted small d-none d-sm-block">
-                            Review portfolio
-                        </div>
-
-                    </div>
-
-                </a>
+                </div>
 
             </div>
 
@@ -1175,32 +1286,86 @@ body {
 
 </div>
 
+
 <!-- =========================================================
-     UPCOMING PAYMENTS
+     COLLECTION PERFORMANCE + SUMMARY
 ========================================================= -->
 
-<div class="card payment-card upcoming-card shadow-sm bg-body mb-4">
+<div class="row g-3 mb-4">
 
-    <div class="payment-card-header">
 
-        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+    <!-- CHART -->
 
-            <div>
+    <div class="col-12 col-xl-8">
+
+        <div class="card dashboard-card shadow-sm bg-body h-100">
+
+            <div class="dashboard-card-header">
+
+                <div class="d-flex align-items-center gap-3">
+
+                    <div class="section-icon bg-success bg-opacity-10 text-success">
+
+                        <i class="bi bi-bar-chart-line"></i>
+
+                    </div>
+
+                    <div>
+
+                        <h5 class="fw-bold mb-1">
+                            Collection Performance
+                        </h5>
+
+                        <p class="text-muted small mb-0">
+                            Payments collected over the last 7 days
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <div class="card-body pt-0">
+
+                <div class="chart-wrapper">
+
+                    <canvas id="collectionChart"></canvas>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- COLLECTION SUMMARY -->
+
+    <div class="col-12 col-xl-4">
+
+        <div class="card dashboard-card shadow-sm bg-body h-100">
+
+            <div class="dashboard-card-header">
 
                 <div class="d-flex align-items-center gap-3">
 
                     <div class="section-icon bg-primary bg-opacity-10 text-primary">
-                        <i class="bi bi-calendar-check"></i>
+
+                        <i class="bi bi-clipboard-data"></i>
+
                     </div>
 
                     <div>
 
-                        <h5 class="fw-bold mb-1 text-body">
-                            Upcoming Payments
+                        <h5 class="fw-bold mb-1">
+                            Collection Summary
                         </h5>
 
                         <p class="text-muted small mb-0">
-                            Payments due within the selected period
+                            Current collection position
                         </p>
 
                     </div>
@@ -1209,27 +1374,88 @@ body {
 
             </div>
 
-            <div class="payment-filter d-flex align-items-center gap-2">
 
-                <span class="small text-muted text-nowrap">
-                    Show next:
-                </span>
+            <div class="card-body pt-0">
 
-                <div class="btn-group">
 
-                    <a
-                        href="index.php?page=dashboard&upcoming_days=15"
-                        class="btn btn-sm <?= $upcomingDays === 15 ? 'btn-primary' : 'btn-outline-primary' ?> fw-semibold"
-                    >
-                        15 Days
-                    </a>
+                <div class="mb-3">
 
-                    <a
-                        href="index.php?page=dashboard&upcoming_days=30"
-                        class="btn btn-sm <?= $upcomingDays === 30 ? 'btn-primary' : 'btn-outline-primary' ?> fw-semibold"
-                    >
-                        30 Days
-                    </a>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+
+                        <span class="small text-muted">
+                            Collection Rate
+                        </span>
+
+                        <span class="collection-rate text-primary">
+                            <?= number_format($collectionRate, 1) ?>%
+                        </span>
+
+                    </div>
+
+                    <div class="progress collection-progress">
+
+                        <div
+                            class="progress-bar bg-primary"
+                            style="width: <?= $collectionRate ?>%"
+                        ></div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="chart-summary">
+
+                    <div class="chart-summary-item d-flex justify-content-between">
+
+                        <span class="chart-summary-label">
+                            Collected
+                        </span>
+
+                        <span class="chart-summary-value text-success">
+                            <?= money($totalCollected) ?>
+                        </span>
+
+                    </div>
+
+
+                    <div class="chart-summary-item d-flex justify-content-between border-top">
+
+                        <span class="chart-summary-label">
+                            Outstanding
+                        </span>
+
+                        <span class="chart-summary-value text-warning">
+                            <?= money($totalOutstanding) ?>
+                        </span>
+
+                    </div>
+
+
+                    <div class="chart-summary-item d-flex justify-content-between border-top">
+
+                        <span class="chart-summary-label">
+                            Overdue
+                        </span>
+
+                        <span class="chart-summary-value text-danger">
+                            <?= money($overdueAmount) ?>
+                        </span>
+
+                    </div>
+
+
+                    <div class="chart-summary-item d-flex justify-content-between border-top">
+
+                        <span class="chart-summary-label">
+                            Today's Collection
+                        </span>
+
+                        <span class="chart-summary-value text-primary">
+                            <?= money($todayCollected) ?>
+                        </span>
+
+                    </div>
 
                 </div>
 
@@ -1237,145 +1463,118 @@ body {
 
         </div>
 
-        <div class="summary-strip d-flex flex-wrap mt-3">
+    </div>
 
-            <div class="summary-item flex-fill">
+</div>
 
-                <span class="summary-label">
-                    Payments
-                </span>
 
-                <span class="summary-value text-primary">
-                    <?= $upcomingCount ?>
-                </span>
+<!-- =========================================================
+     DUE TODAY
+========================================================= -->
+
+<div class="card dashboard-card shadow-sm bg-body mb-4">
+
+    <div class="dashboard-card-header">
+
+        <div class="d-flex justify-content-between align-items-center gap-3">
+
+            <div class="d-flex align-items-center gap-3">
+
+                <div class="section-icon bg-warning bg-opacity-10 text-warning">
+
+                    <i class="bi bi-calendar-day"></i>
+
+                </div>
+
+                <div>
+
+                    <h5 class="fw-bold mb-1">
+                        Loans Due Today
+                    </h5>
+
+                    <p class="text-muted small mb-0">
+                        Payments requiring attention today
+                    </p>
+
+                </div>
 
             </div>
 
-            <div class="summary-item flex-fill">
-
-                <span class="summary-label">
-                    Expected
-                </span>
-
-                <span class="summary-value text-success">
-                    <?= money($upcomingTotal) ?>
-                </span>
-
-            </div>
-
-            <div class="summary-item flex-fill">
-
-                <span class="summary-label">
-                    Period
-                </span>
-
-                <span class="summary-value">
-                    Next <?= $upcomingDays ?> days
-                </span>
-
-            </div>
+            <span class="badge bg-warning bg-opacity-10 text-warning">
+                <?= $loansDueToday ?> Due
+            </span>
 
         </div>
 
     </div>
 
-    <!-- DESKTOP -->
 
-    <div class="payment-table-wrapper">
+    <?php if (empty($todayDuePayments)): ?>
 
-        <table class="table payment-table table-hover align-middle mb-0">
+        <div class="empty-state text-center text-muted">
 
-            <thead class="table-light text-uppercase text-muted">
+            <div class="empty-icon bg-success bg-opacity-10 text-success">
 
-                <tr>
+                <i class="bi bi-check-circle"></i>
 
-                    <th class="py-3 ps-4">
-                        Payment Date
-                    </th>
+            </div>
 
-                    <th class="py-3">
-                        Borrower
-                    </th>
+            <div class="fw-semibold text-success mb-1">
+                Nothing due today
+            </div>
 
-                    <th class="py-3">
-                        Loan Reference
-                    </th>
+            <div class="small">
+                There are no unpaid loan schedules due today.
+            </div>
 
-                    <th class="py-3 text-end">
-                        Amount Due
-                    </th>
+        </div>
 
-                    <th class="py-3 text-center">
-                        Status
-                    </th>
+    <?php else: ?>
 
-                    <th class="py-3 text-end pe-4">
-                        Days
-                    </th>
 
-                </tr>
+        <!-- DESKTOP -->
 
-            </thead>
+        <div class="dashboard-table-wrapper table-responsive">
 
-            <tbody>
+            <table class="table dashboard-table table-hover align-middle mb-0">
 
-            <?php if (empty($upcomingPayments)): ?>
+                <thead class="table-light">
 
-                <tr>
+                    <tr>
 
-                    <td colspan="6">
+                        <th class="ps-4">
+                            Borrower
+                        </th>
 
-                        <div class="empty-state text-center text-muted">
+                        <th>
+                            Loan
+                        </th>
 
-                            <div class="empty-icon bg-primary bg-opacity-10 text-primary">
-                                <i class="bi bi-calendar2-check"></i>
-                            </div>
+                        <th>
+                            Installment
+                        </th>
 
-                            <div class="fw-semibold mb-1">
-                                No upcoming payments
-                            </div>
+                        <th class="text-end">
+                            Amount Due
+                        </th>
 
-                            <div class="small">
-                                There are no unpaid scheduled payments within the next
-                                <?= $upcomingDays ?> days.
-                            </div>
+                        <th class="text-end pe-4">
+                            Balance
+                        </th>
 
-                        </div>
+                    </tr>
 
-                    </td>
+                </thead>
 
-                </tr>
+                <tbody>
 
-            <?php else: ?>
-
-                <?php foreach ($upcomingPayments as $payment): ?>
-
-                    <?php
-                    $dueDate = new DateTime($payment['due_date']);
-                    $today = new DateTime(date('Y-m-d'));
-                    $daysRemaining = (int)$today->diff($dueDate)->format('%r%a');
-
-                    $statusClass = paymentStatusClass($daysRemaining);
-                    $statusLabel = paymentStatusLabel($daysRemaining);
-                    ?>
+                <?php foreach ($todayDuePayments as $payment): ?>
 
                     <tr>
 
                         <td class="ps-4">
 
-                            <div class="payment-date text-body">
-
-                                <i class="bi bi-calendar-event text-primary me-1"></i>
-
-                                <?= date('M d, Y', strtotime($payment['due_date'])) ?>
-
-                            </div>
-
-                        </td>
-
-                        <td>
-
-                            <div class="fw-bold text-body">
+                            <div class="fw-bold">
                                 <?= e($payment['borrower_name']) ?>
                             </div>
 
@@ -1383,55 +1582,29 @@ body {
 
                         <td>
 
-                            <span class="badge bg-secondary bg-opacity-10 text-body fw-semibold">
-                                <?= e(loanReference($payment)) ?>
+                            <span class="badge bg-secondary bg-opacity-10 text-body">
+                                <?= e($payment['reference_number'] ?: '#' . $payment['loan_id']) ?>
                             </span>
 
                         </td>
 
-                        <td class="text-end">
+                        <td>
 
-                            <span class="fw-bold text-body">
-                                <?= money($payment['amount_due']) ?>
+                            <span class="small">
+                                #<?= (int)$payment['installment_number'] ?>
                             </span>
 
                         </td>
 
-                        <td class="text-center">
+                        <td class="text-end fw-semibold">
 
-                            <span class="badge bg-<?= $statusClass ?> bg-opacity-10 text-<?= $statusClass ?> due-soon-badge">
-
-                                <?php if ($daysRemaining === 0): ?>
-
-                                    <i class="bi bi-exclamation-circle me-1"></i>
-
-                                <?php elseif ($daysRemaining <= 3): ?>
-
-                                    <i class="bi bi-clock me-1"></i>
-
-                                <?php endif; ?>
-
-                                <?= $statusLabel ?>
-
-                            </span>
+                            <?= money($payment['amount_due']) ?>
 
                         </td>
 
-                        <td class="text-end pe-4">
+                        <td class="text-end pe-4 fw-bold text-warning">
 
-                            <?php if ($daysRemaining === 0): ?>
-
-                                <span class="fw-bold text-warning">
-                                    Today
-                                </span>
-
-                            <?php else: ?>
-
-                                <span class="text-muted small">
-                                    <?= $daysRemaining ?> day(s)
-                                </span>
-
-                            <?php endif; ?>
+                            <?= money($payment['balance_due']) ?>
 
                         </td>
 
@@ -1439,113 +1612,75 @@ body {
 
                 <?php endforeach; ?>
 
-            <?php endif; ?>
+                </tbody>
 
-            </tbody>
+            </table>
 
-        </table>
+        </div>
 
-    </div>
 
-    <!-- MOBILE -->
+        <!-- MOBILE -->
 
-    <div class="payment-mobile">
+        <div class="mobile-list">
 
-        <?php if (empty($upcomingPayments)): ?>
+            <?php foreach ($todayDuePayments as $payment): ?>
 
-            <div class="empty-state text-center text-muted">
+                <div class="mobile-item">
 
-                <div class="empty-icon bg-primary bg-opacity-10 text-primary">
-                    <i class="bi bi-calendar2-check"></i>
-                </div>
+                    <div class="mobile-item-top">
 
-                <div class="fw-semibold mb-1">
-                    No upcoming payments
-                </div>
+                        <div class="min-width-0">
 
-                <div class="small">
-                    No unpaid scheduled payments within the next
-                    <?= $upcomingDays ?> days.
-                </div>
-
-            </div>
-
-        <?php else: ?>
-
-            <?php foreach ($upcomingPayments as $payment): ?>
-
-                <?php
-                $dueDate = new DateTime($payment['due_date']);
-                $today = new DateTime(date('Y-m-d'));
-                $daysRemaining = (int)$today->diff($dueDate)->format('%r%a');
-
-                $statusClass = paymentStatusClass($daysRemaining);
-                $statusLabel = paymentStatusLabel($daysRemaining);
-                ?>
-
-                <div class="mobile-payment">
-
-                    <div class="mobile-payment-top">
-
-                        <div class="flex-grow-1 min-width-0">
-
-                            <div class="mobile-payment-borrower">
+                            <div class="mobile-item-name">
                                 <?= e($payment['borrower_name']) ?>
                             </div>
 
-                            <div class="mobile-payment-reference">
-                                <?= e(loanReference($payment)) ?>
-                            </div>
+                            <div class="mobile-item-reference">
 
-                            <div class="mobile-payment-date text-primary">
+                                <?= e(
+                                    $payment['reference_number']
+                                    ?: '#' . $payment['loan_id']
+                                ) ?>
 
-                                <i class="bi bi-calendar-event me-1"></i>
-
-                                <?= date('M d, Y', strtotime($payment['due_date'])) ?>
+                                · Installment
+                                #<?= (int)$payment['installment_number'] ?>
 
                             </div>
 
                         </div>
 
-                        <div class="mobile-payment-amount text-body">
-                            <?= money($payment['amount_due']) ?>
+                        <div class="mobile-item-amount text-warning">
+
+                            <?= money($payment['balance_due']) ?>
+
                         </div>
 
                     </div>
 
-                    <div class="mobile-payment-info">
+
+                    <div class="mobile-item-info">
 
                         <div>
 
-                            <span class="mobile-payment-label">
-                                Status
+                            <span class="mobile-label">
+                                Amount Due
                             </span>
 
-                            <span class="badge bg-<?= $statusClass ?> bg-opacity-10 text-<?= $statusClass ?>">
-                                <?= $statusLabel ?>
+                            <span class="mobile-value">
+                                <?= money($payment['amount_due']) ?>
                             </span>
 
                         </div>
 
                         <div class="text-end">
 
-                            <span class="mobile-payment-label">
-                                Days
+                            <span class="mobile-label">
+                                Remaining
                             </span>
 
-                            <?php if ($daysRemaining === 0): ?>
-
-                                <span class="mobile-payment-value text-warning">
-                                    Today
-                                </span>
-
-                            <?php else: ?>
-
-                                <span class="mobile-payment-value">
-                                    <?= $daysRemaining ?> day(s)
-                                </span>
-
-                            <?php endif; ?>
+                            <span class="mobile-value text-warning">
+                                <?= money($payment['balance_due']) ?>
+                            </span>
 
                         </div>
 
@@ -1555,38 +1690,282 @@ body {
 
             <?php endforeach; ?>
 
-        <?php endif; ?>
+        </div>
 
-    </div>
+    <?php endif; ?>
 
 </div>
 
+
 <!-- =========================================================
-     OVERDUE PAYMENTS
+     RECENT PAYMENTS + OVERDUE
 ========================================================= -->
 
-<div class="card payment-card overdue-card shadow-sm bg-body mb-4">
+<div class="row g-3 mb-4">
 
-    <div class="payment-card-header">
 
-        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+    <!-- RECENT PAYMENTS -->
 
-            <div>
+    <div class="col-12 col-xl-7">
+
+        <div class="card dashboard-card shadow-sm bg-body h-100">
+
+            <div class="dashboard-card-header">
+
+                <div class="d-flex justify-content-between align-items-center gap-3">
+
+                    <div class="d-flex align-items-center gap-3">
+
+                        <div class="section-icon bg-success bg-opacity-10 text-success">
+
+                            <i class="bi bi-cash-coin"></i>
+
+                        </div>
+
+                        <div>
+
+                            <h5 class="fw-bold mb-1">
+                                Recent Payments
+                            </h5>
+
+                            <p class="text-muted small mb-0">
+                                Latest loan collections
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                    <a
+                        href="index.php?page=payments"
+                        class="small text-decoration-none fw-semibold text-nowrap"
+                    >
+                        View All
+                        <i class="bi bi-arrow-right ms-1"></i>
+                    </a>
+
+                </div>
+
+            </div>
+
+
+            <?php if (empty($recentPayments)): ?>
+
+                <div class="empty-state text-center text-muted">
+
+                    <div class="empty-icon bg-secondary bg-opacity-10 text-secondary">
+
+                        <i class="bi bi-receipt"></i>
+
+                    </div>
+
+                    <div class="fw-semibold mb-1">
+                        No payments yet
+                    </div>
+
+                    <div class="small">
+                        Recorded loan payments will appear here.
+                    </div>
+
+                </div>
+
+            <?php else: ?>
+
+
+                <!-- DESKTOP -->
+
+                <div class="dashboard-table-wrapper table-responsive">
+
+                    <table class="table dashboard-table table-hover align-middle mb-0">
+
+                        <thead class="table-light">
+
+                            <tr>
+
+                                <th class="ps-4">
+                                    Date
+                                </th>
+
+                                <th>
+                                    Borrower
+                                </th>
+
+                                <th>
+                                    Loan
+                                </th>
+
+                                <th class="text-end pe-4">
+                                    Amount
+                                </th>
+
+                            </tr>
+
+                        </thead>
+
+                        <tbody>
+
+                        <?php foreach ($recentPayments as $payment): ?>
+
+                            <tr>
+
+                                <td class="ps-4 text-muted small">
+
+                                    <?= date(
+                                        'M d, Y',
+                                        strtotime($payment['payment_date'])
+                                    ) ?>
+
+                                </td>
+
+                                <td>
+
+                                    <div class="fw-semibold">
+                                        <?= e($payment['borrower_name']) ?>
+                                    </div>
+
+                                </td>
+
+                                <td>
+
+                                    <span class="badge bg-secondary bg-opacity-10 text-body">
+
+                                        <?= e(
+                                            $payment['reference_number']
+                                            ?: '#' . $payment['loan_id']
+                                        ) ?>
+
+                                    </span>
+
+                                </td>
+
+                                <td class="text-end pe-4">
+
+                                    <span class="fw-bold text-success">
+
+                                        +<?= money($payment['payment_amount']) ?>
+
+                                    </span>
+
+                                </td>
+
+                            </tr>
+
+                        <?php endforeach; ?>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+
+                <!-- MOBILE -->
+
+                <div class="mobile-list">
+
+                    <?php foreach ($recentPayments as $payment): ?>
+
+                        <div class="mobile-item">
+
+                            <div class="mobile-item-top">
+
+                                <div class="min-width-0">
+
+                                    <div class="mobile-item-name">
+
+                                        <?= e($payment['borrower_name']) ?>
+
+                                    </div>
+
+                                    <div class="mobile-item-reference">
+
+                                        <?= e(
+                                            $payment['reference_number']
+                                            ?: '#' . $payment['loan_id']
+                                        ) ?>
+
+                                    </div>
+
+                                </div>
+
+                                <div class="mobile-item-amount text-success">
+
+                                    +<?= money($payment['payment_amount']) ?>
+
+                                </div>
+
+                            </div>
+
+                            <div class="mobile-item-info">
+
+                                <div>
+
+                                    <span class="mobile-label">
+                                        Payment Date
+                                    </span>
+
+                                    <span class="mobile-value">
+
+                                        <?= date(
+                                            'M d, Y',
+                                            strtotime($payment['payment_date'])
+                                        ) ?>
+
+                                    </span>
+
+                                </div>
+
+                                <div class="text-end">
+
+                                    <span class="mobile-label">
+                                        Status
+                                    </span>
+
+                                    <span class="badge bg-success bg-opacity-10 text-success">
+                                        Paid
+                                    </span>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    <?php endforeach; ?>
+
+                </div>
+
+            <?php endif; ?>
+
+        </div>
+
+    </div>
+
+
+    <!-- OVERDUE -->
+
+    <div class="col-12 col-xl-5">
+
+        <div class="card dashboard-card shadow-sm bg-body h-100">
+
+            <div class="dashboard-card-header">
 
                 <div class="d-flex align-items-center gap-3">
 
                     <div class="section-icon bg-danger bg-opacity-10 text-danger">
+
                         <i class="bi bi-exclamation-triangle"></i>
+
                     </div>
 
                     <div>
 
-                        <h5 class="fw-bold mb-1 text-body">
-                            Overdue Payments
+                        <h5 class="fw-bold mb-1">
+                            Overdue Loans
                         </h5>
 
                         <p class="text-muted small mb-0">
-                            Payments that have passed their due date
+                            Accounts needing collection
                         </p>
 
                     </div>
@@ -1595,519 +1974,139 @@ body {
 
             </div>
 
-            <div class="text-md-end">
 
-                <div class="fw-bold text-danger fs-5">
-                    <?= money($overdueTotal) ?>
+            <?php if (empty($recentOverdue)): ?>
+
+                <div class="empty-state text-center text-muted">
+
+                    <div class="empty-icon bg-success bg-opacity-10 text-success">
+
+                        <i class="bi bi-check-circle"></i>
+
+                    </div>
+
+                    <div class="fw-semibold text-success mb-1">
+                        No overdue payments
+                    </div>
+
+                    <div class="small">
+                        Your loan schedules are up to date.
+                    </div>
+
                 </div>
 
-                <div class="small text-muted">
-                    <?= $overdueCount ?> overdue payment(s)
+            <?php else: ?>
+
+
+                <div class="mobile-list d-block p-3">
+
+                    <?php foreach ($recentOverdue as $payment): ?>
+
+                        <?php
+
+                        $dueDate = new DateTime(
+                            $payment['due_date']
+                        );
+
+                        $today = new DateTime(
+                            date('Y-m-d')
+                        );
+
+                        $daysOverdue =
+                            (int)$dueDate
+                                ->diff($today)
+                                ->format('%a');
+
+                        ?>
+
+                        <div class="mobile-item">
+
+                            <div class="mobile-item-top">
+
+                                <div class="min-width-0">
+
+                                    <div class="mobile-item-name">
+
+                                        <?= e(
+                                            $payment['borrower_name']
+                                        ) ?>
+
+                                    </div>
+
+                                    <div class="mobile-item-reference">
+
+                                        <?= e(
+                                            $payment['reference_number']
+                                            ?: '#' . $payment['loan_id']
+                                        ) ?>
+
+                                    </div>
+
+                                </div>
+
+                                <div class="mobile-item-amount text-danger">
+
+                                    <?= money(
+                                        $payment['balance_due']
+                                    ) ?>
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="mobile-item-info">
+
+                                <div>
+
+                                    <span class="mobile-label">
+                                        Due Date
+                                    </span>
+
+                                    <span class="mobile-value text-danger">
+
+                                        <?= date(
+                                            'M d, Y',
+                                            strtotime(
+                                                $payment['due_date']
+                                            )
+                                        ) ?>
+
+                                    </span>
+
+                                </div>
+
+                                <div class="text-end">
+
+                                    <span class="mobile-label">
+                                        Overdue
+                                    </span>
+
+                                    <span class="mobile-value text-danger">
+
+                                        <?= $daysOverdue ?>
+                                        day(s)
+
+                                    </span>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    <?php endforeach; ?>
+
                 </div>
 
-            </div>
+            <?php endif; ?>
 
         </div>
 
     </div>
 
-    <!-- DESKTOP -->
-
-    <div class="payment-table-wrapper">
-
-        <table class="table payment-table table-hover align-middle mb-0">
-
-            <thead class="table-light text-uppercase text-muted">
-
-                <tr>
-
-                    <th class="py-3 ps-4">
-                        Due Date
-                    </th>
-
-                    <th class="py-3">
-                        Borrower
-                    </th>
-
-                    <th class="py-3">
-                        Loan Reference
-                    </th>
-
-                    <th class="py-3 text-end">
-                        Amount Due
-                    </th>
-
-                    <th class="py-3 text-center">
-                        Status
-                    </th>
-
-                    <th class="py-3 text-end pe-4">
-                        Overdue
-                    </th>
-
-                </tr>
-
-            </thead>
-
-            <tbody>
-
-            <?php if (empty($overduePayments)): ?>
-
-                <tr>
-
-                    <td colspan="6">
-
-                        <div class="empty-state text-center text-muted">
-
-                            <div class="empty-icon bg-success bg-opacity-10 text-success">
-                                <i class="bi bi-check-circle"></i>
-                            </div>
-
-                            <div class="fw-semibold text-success mb-1">
-                                No overdue payments
-                            </div>
-
-                            <div class="small">
-                                Great! All your scheduled payments are currently up to date.
-                            </div>
-
-                        </div>
-
-                    </td>
-
-                </tr>
-
-            <?php else: ?>
-
-                <?php foreach ($overduePayments as $payment): ?>
-
-                    <?php
-                    $dueDate = new DateTime($payment['due_date']);
-                    $today = new DateTime(date('Y-m-d'));
-                    $daysOverdue = (int)$dueDate->diff($today)->format('%a');
-                    ?>
-
-                    <tr>
-
-                        <td class="ps-4">
-
-                            <div class="payment-date text-danger">
-
-                                <i class="bi bi-calendar-x me-1"></i>
-
-                                <?= date('M d, Y', strtotime($payment['due_date'])) ?>
-
-                            </div>
-
-                        </td>
-
-                        <td>
-
-                            <div class="fw-bold text-body">
-                                <?= e($payment['borrower_name']) ?>
-                            </div>
-
-                        </td>
-
-                        <td>
-
-                            <span class="badge bg-secondary bg-opacity-10 text-body fw-semibold">
-                                <?= e(loanReference($payment)) ?>
-                            </span>
-
-                        </td>
-
-                        <td class="text-end">
-
-                            <span class="fw-bold text-danger">
-                                <?= money($payment['amount_due']) ?>
-                            </span>
-
-                        </td>
-
-                        <td class="text-center">
-
-                            <?php if ($payment['schedule_status'] === 'partially_paid'): ?>
-
-                                <span class="badge bg-warning bg-opacity-10 text-warning">
-                                    <i class="bi bi-clock-history me-1"></i>
-                                    Partially Paid
-                                </span>
-
-                            <?php else: ?>
-
-                                <span class="badge bg-danger bg-opacity-10 text-danger">
-                                    <i class="bi bi-exclamation-circle me-1"></i>
-                                    Overdue
-                                </span>
-
-                            <?php endif; ?>
-
-                        </td>
-
-                        <td class="text-end pe-4">
-
-                            <span class="fw-bold text-danger">
-                                <?= $daysOverdue ?> day(s)
-                            </span>
-
-                        </td>
-
-                    </tr>
-
-                <?php endforeach; ?>
-
-            <?php endif; ?>
-
-            </tbody>
-
-        </table>
-
-    </div>
-
-    <!-- MOBILE -->
-
-    <div class="payment-mobile">
-
-        <?php if (empty($overduePayments)): ?>
-
-            <div class="empty-state text-center text-muted">
-
-                <div class="empty-icon bg-success bg-opacity-10 text-success">
-                    <i class="bi bi-check-circle"></i>
-                </div>
-
-                <div class="fw-semibold text-success mb-1">
-                    No overdue payments
-                </div>
-
-                <div class="small">
-                    Great! All your scheduled payments are currently up to date.
-                </div>
-
-            </div>
-
-        <?php else: ?>
-
-            <?php foreach ($overduePayments as $payment): ?>
-
-                <?php
-                $dueDate = new DateTime($payment['due_date']);
-                $today = new DateTime(date('Y-m-d'));
-                $daysOverdue = (int)$dueDate->diff($today)->format('%a');
-                ?>
-
-                <div class="mobile-payment">
-
-                    <div class="mobile-payment-top">
-
-                        <div class="flex-grow-1 min-width-0">
-
-                            <div class="mobile-payment-borrower">
-                                <?= e($payment['borrower_name']) ?>
-                            </div>
-
-                            <div class="mobile-payment-reference">
-                                <?= e(loanReference($payment)) ?>
-                            </div>
-
-                            <div class="mobile-payment-date text-danger">
-
-                                <i class="bi bi-calendar-x me-1"></i>
-
-                                <?= date('M d, Y', strtotime($payment['due_date'])) ?>
-
-                            </div>
-
-                        </div>
-
-                        <div class="mobile-payment-amount text-danger">
-                            <?= money($payment['amount_due']) ?>
-                        </div>
-
-                    </div>
-
-                    <div class="mobile-payment-info">
-
-                        <div>
-
-                            <span class="mobile-payment-label">
-                                Status
-                            </span>
-
-                            <?php if ($payment['schedule_status'] === 'partially_paid'): ?>
-
-                                <span class="badge bg-warning bg-opacity-10 text-warning">
-                                    Partially Paid
-                                </span>
-
-                            <?php else: ?>
-
-                                <span class="badge bg-danger bg-opacity-10 text-danger">
-                                    Overdue
-                                </span>
-
-                            <?php endif; ?>
-
-                        </div>
-
-                        <div class="text-end">
-
-                            <span class="mobile-payment-label">
-                                Overdue
-                            </span>
-
-                            <span class="mobile-payment-value text-danger">
-                                <?= $daysOverdue ?> day(s)
-                            </span>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            <?php endforeach; ?>
-
-        <?php endif; ?>
-
-    </div>
-
 </div>
 
-<!-- =========================================================
-     RECENT TRANSACTIONS
-========================================================= -->
-
-<div class="card transaction-card shadow-sm bg-body">
-
-    <div class="transaction-header card-header bg-transparent border-0 px-4 pt-4 pb-3">
-
-        <div class="d-flex justify-content-between align-items-center gap-3">
-
-            <div>
-
-                <h5 class="fw-bold mb-1 text-body">
-                    Recent Transactions
-                </h5>
-
-                <p class="text-muted small mb-0">
-                    Latest activity from your accounts
-                </p>
-
-            </div>
-
-            <a
-                href="index.php?page=loan_accounts"
-                class="small text-decoration-none fw-semibold text-nowrap"
-            >
-                View All
-                <i class="bi bi-arrow-right ms-1"></i>
-            </a>
-
-        </div>
-
-    </div>
-
-    <!-- DESKTOP -->
-
-    <div class="transaction-table table-responsive">
-
-        <table class="table table-hover align-middle mb-0">
-
-            <thead class="table-light text-uppercase text-muted">
-
-                <tr>
-
-                    <th class="py-3 ps-4">
-                        Date / Time
-                    </th>
-
-                    <th class="py-3">
-                        Type
-                    </th>
-
-                    <th class="py-3">
-                        Description
-                    </th>
-
-                    <th class="py-3 text-end pe-4">
-                        Amount
-                    </th>
-
-                </tr>
-
-            </thead>
-
-            <tbody>
-
-            <?php if (empty($recentTransactions)): ?>
-
-                <tr>
-
-                    <td colspan="4">
-
-                        <div class="empty-state text-center text-muted">
-
-                            <div class="empty-icon bg-secondary bg-opacity-10 text-secondary">
-                                <i class="bi bi-receipt"></i>
-                            </div>
-
-                            <div class="fw-semibold mb-1">
-                                No recent transactions
-                            </div>
-
-                            <div class="small">
-                                Transactions will appear here when account activity occurs.
-                            </div>
-
-                        </div>
-
-                    </td>
-
-                </tr>
-
-            <?php else: ?>
-
-                <?php foreach ($recentTransactions as $tx): ?>
-
-                    <?php
-                    $isCredit = strtoupper((string)$tx['type']) === 'CREDIT';
-                    $typeClass = $isCredit ? 'success' : 'danger';
-                    ?>
-
-                    <tr>
-
-                        <td class="ps-4 text-muted small">
-
-                            <i class="bi bi-calendar3 me-1"></i>
-
-                            <?= date('M d, Y', strtotime($tx['created_at'])) ?>
-
-                            <div class="ms-4 small opacity-75">
-                                <?= date('h:i A', strtotime($tx['created_at'])) ?>
-                            </div>
-
-                        </td>
-
-                        <td>
-
-                            <span class="badge bg-<?= $typeClass ?> bg-opacity-10 text-<?= $typeClass ?> px-2 py-1 fw-semibold">
-
-                                <i class="bi <?= $isCredit ? 'bi-arrow-down-left' : 'bi-arrow-up-right' ?> me-1"></i>
-
-                                <?= e($tx['type']) ?>
-
-                            </span>
-
-                        </td>
-
-                        <td class="fw-semibold text-body">
-
-                            <?= e($tx['description']) ?>
-
-                        </td>
-
-                        <td class="text-end pe-4 fw-bold text-<?= $typeClass ?>">
-
-                            <?= $isCredit ? '+' : '-' ?><?= money($tx['amount']) ?>
-
-                        </td>
-
-                    </tr>
-
-                <?php endforeach; ?>
-
-            <?php endif; ?>
-
-            </tbody>
-
-        </table>
-
-    </div>
-
-    <!-- MOBILE -->
-
-    <div class="transaction-mobile">
-
-        <?php if (empty($recentTransactions)): ?>
-
-            <div class="empty-state text-center text-muted">
-
-                <div class="empty-icon bg-secondary bg-opacity-10 text-secondary">
-                    <i class="bi bi-receipt"></i>
-                </div>
-
-                <div class="fw-semibold mb-1">
-                    No recent transactions
-                </div>
-
-                <div class="small">
-                    Transactions will appear here automatically.
-                </div>
-
-            </div>
-
-        <?php else: ?>
-
-            <?php foreach ($recentTransactions as $tx): ?>
-
-                <?php
-                $isCredit = strtoupper((string)$tx['type']) === 'CREDIT';
-                $typeClass = $isCredit ? 'success' : 'danger';
-                ?>
-
-                <div class="mobile-transaction">
-
-                    <div class="mobile-transaction-top">
-
-                        <div class="flex-grow-1 min-width-0">
-
-                            <div class="mobile-transaction-description text-body">
-                                <?= e($tx['description']) ?>
-                            </div>
-
-                            <div class="mobile-transaction-date mt-1">
-
-                                <i class="bi bi-calendar3 me-1"></i>
-
-                                <?= date('M d, Y h:i A', strtotime($tx['created_at'])) ?>
-
-                            </div>
-
-                        </div>
-
-                        <span class="badge bg-<?= $typeClass ?> bg-opacity-10 text-<?= $typeClass ?> fw-semibold">
-
-                            <?= e($tx['type']) ?>
-
-                        </span>
-
-                    </div>
-
-                    <div class="mobile-transaction-bottom">
-
-                        <span class="small text-muted">
-                            Account Transaction
-                        </span>
-
-                        <span class="mobile-transaction-amount text-<?= $typeClass ?>">
-
-                            <?= $isCredit ? '+' : '-' ?><?= money($tx['amount']) ?>
-
-                        </span>
-
-                    </div>
-
-                </div>
-
-            <?php endforeach; ?>
-
-        <?php endif; ?>
-
-    </div>
-
-</div>
 
 </div>
 
@@ -2115,7 +2114,180 @@ body {
 
 </div>
 
+
+<!-- =========================================================
+     BOOTSTRAP
+========================================================= -->
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
+
+<!-- =========================================================
+     COLLECTION CHART
+========================================================= -->
+
+<script>
+
+document.addEventListener('DOMContentLoaded', function () {
+
+    const canvas =
+        document.getElementById('collectionChart');
+
+    if (!canvas) {
+        return;
+    }
+
+    const labels =
+        <?= json_encode($collectionLabels) ?>;
+
+    const values =
+        <?= json_encode($collectionValues) ?>;
+
+    const isDark =
+        document.documentElement.getAttribute(
+            'data-bs-theme'
+        ) === 'dark';
+
+    const textColor =
+        isDark
+            ? '#adb5bd'
+            : '#6c757d';
+
+    const gridColor =
+        isDark
+            ? 'rgba(255,255,255,.08)'
+            : 'rgba(0,0,0,.06)';
+
+    new Chart(canvas, {
+
+        type: 'bar',
+
+        data: {
+
+            labels: labels,
+
+            datasets: [
+
+                {
+
+                    label: 'Collected',
+
+                    data: values,
+
+                    borderRadius: 7,
+
+                    borderSkipped: false,
+
+                    maxBarThickness: 38
+
+                }
+
+            ]
+
+        },
+
+        options: {
+
+            responsive: true,
+
+            maintainAspectRatio: false,
+
+            interaction: {
+
+                intersect: false,
+
+                mode: 'index'
+
+            },
+
+            plugins: {
+
+                legend: {
+                    display: false
+                },
+
+                tooltip: {
+
+                    callbacks: {
+
+                        label: function (context) {
+
+                            return ' ₱' +
+                                Number(
+                                    context.raw
+                                ).toLocaleString(
+                                    'en-PH',
+                                    {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                    }
+                                );
+
+                        }
+
+                    }
+
+                }
+
+            },
+
+            scales: {
+
+                x: {
+
+                    grid: {
+                        display: false
+                    },
+
+                    ticks: {
+                        color: textColor,
+                        font: {
+                            size: 11
+                        }
+                    }
+
+                },
+
+                y: {
+
+                    beginAtZero: true,
+
+                    grid: {
+                        color: gridColor
+                    },
+
+                    ticks: {
+
+                        color: textColor,
+
+                        font: {
+                            size: 10
+                        },
+
+                        callback: function (value) {
+
+                            return '₱' +
+                                Number(value)
+                                    .toLocaleString(
+                                        'en-PH'
+                                    );
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+        }
+
+    });
+
+});
+
+</script>
+
 </body>
+
 </html>

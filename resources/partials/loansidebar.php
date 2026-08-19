@@ -21,15 +21,20 @@ $navGroups = [
     ],
 
     [
-        'title' => 'Customers',
-        'items' => [
-            [
-                'page' => 'borrowers',
-                'label' => 'Borrowers',
-                'icon' => 'bi-people-fill'
-            ],
-        ]
-    ],
+    'title' => 'Customers',
+    'items' => [
+        [
+            'page' => 'borrowers',
+            'label' => 'Borrowers',
+            'icon' => 'bi-people-fill'
+        ],
+        [
+            'page' => 'guarantors',
+            'label' => 'Guarantors',
+            'icon' => 'bi-person-check-fill'
+        ],
+    ]
+],
 
     [
         'title' => 'Loan Management',

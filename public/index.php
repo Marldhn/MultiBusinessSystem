@@ -31,6 +31,12 @@ switch ($page) {
         break;
 
 
+
+        case 'user_management':
+    require __DIR__ . '/../modules/admin/users.php';
+    break;
+
+
     // =====================================================
     // REGISTER
     // =====================================================
@@ -65,7 +71,7 @@ switch ($page) {
         break;
 
 // =====================================================
-// SETTINGS
+// GLOBAL SYSTEM SETTINGS
 // =====================================================
 
 case 'settings':
@@ -75,10 +81,9 @@ case 'settings':
         exit;
     }
 
-    require_once __DIR__ . '/../modules/LoanManagement/settings.php';
+    require_once __DIR__ . '/../resources/settings.php';
 
     break;
-
 
     // =====================================================
     // SUBSCRIPTION
@@ -234,6 +239,24 @@ case 'settings':
         require_once __DIR__ . '/../modules/LoanManagement/payments/index.php';
 
         break;
+
+
+        
+    // =====================================================
+    // GUARANTOR
+    // =====================================================
+
+    case 'guarantors':
+
+        if (!isset($_SESSION['user_id'])) {
+            header('Location: index.php?page=login');
+            exit;
+        }
+
+        require_once __DIR__ . '/../modules/LoanManagement/guarantors/index.php';
+
+        break;
+
 
 
     // =====================================================
